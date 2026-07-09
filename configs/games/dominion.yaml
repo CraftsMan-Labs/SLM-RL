@@ -1,0 +1,11 @@
+# Dominion v1 (Phase 4): 2 players, fixed 8-card kingdom, Big Money opponent.
+max_turns: 40                # turn cap; game scored by VP at cap
+eval_episodes: 300
+shaping_weight: 0.1          # +0.01 * delta-VP per turn, clipped
+monitor:
+  interventions: [reflect, backtrack, truncate]
+  reward_stagnation_window: 10
+extra:
+  kingdom: [Village, Smithy, Laboratory, Market, Festival, "Council Room", Workshop, Mine]
+  players: 2
+  opponents: [big_money, big_money_smithy]

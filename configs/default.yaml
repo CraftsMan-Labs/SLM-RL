@@ -1,0 +1,31 @@
+# Run defaults. Precedence: this file -> configs/games/<game>.yaml ->
+# user YAML (--config) -> CLI flags.
+run_id: default
+home: ./runs
+game: mastermind
+generations: 5
+seed: 0
+max_context_tokens: 2048   # 8GB budget rule: observation renderers stay small
+
+train:
+  strategy: reject_sft     # overridden by the resolved hardware tier
+  lora_rank: 16
+  lora_alpha: 32
+  learning_rate: 5.0e-5
+  group_size: 4
+  kl_beta: 0.02
+  entropy_floor: 0.3
+  entropy_bonus: 0.01
+  distinct_action_bonus: 0.0
+  max_completion_tokens: 256
+  episodes_per_generation: 200
+  selection_quantile: 0.25
+  exclude_monitor_flagged: true
+  max_duplicate_action_sequences: 3
+
+gate:
+  min_improvement: 0.02
+  max_intervention_rate_ratio: 1.1
+  max_invalid_rate: 0.05
+  min_mean_entropy: 0.2
+  max_consecutive_failures: 2

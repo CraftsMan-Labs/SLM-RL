@@ -1,0 +1,12 @@
+# GRPO defaults (CUDA tiers). See docs/DECISIONS.md D10 and D4.
+train:
+  strategy: grpo
+  lora_rank: 16
+  lora_alpha: 32
+  learning_rate: 5.0e-5
+  group_size: 4              # bump to 8 for high-variance games (Blackjack)
+  kl_beta: 0.02              # KL to previous champion, not original base
+  entropy_floor: 0.3         # mode-collapse alarm threshold
+  entropy_bonus: 0.01
+  distinct_action_bonus: 0.0 # experimental; ablate in Phase 3
+  max_completion_tokens: 256

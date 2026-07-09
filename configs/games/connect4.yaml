@@ -1,0 +1,12 @@
+# Connect-4 (Phase 2): competitive, opponent pool + ELO league.
+max_turns: 42
+eval_episodes: 400
+monitor:
+  interventions: [reflect, truncate]
+opponent_mix:
+  heuristic: 0.2
+  champion: 0.3
+  league: 0.5
+extra:
+  rows: 6
+  cols: 7

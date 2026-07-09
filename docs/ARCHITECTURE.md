@@ -1,0 +1,99 @@
+# SLM-RL Architecture
+
+A self-improving game gymnasium for small language models: play → dataset → fine-tune → eval gate → promote → play again.
+
+## The generation loop
+
+The system is organized around a **generation loop** run by the orchestrator (`slm_rl/orchestrator/generation.py`). One *generation* = one full cycle:
+
+```
+                ┌──────────────────────────────────────────────────────┐
+                │                 GenerationRunner                     │
+                └──────────────────────────────────────────────────────┘
+  ┌───────────┐   ┌────────────┐   ┌───────────┐   ┌──────────┐   ┌─────────────┐
+  │  ROLLOUT  │──▶│  DATASET   │──▶│   TRAIN   │──▶│   EVAL   │──▶│ GATE:       │
+  │ agent ×   │   │ JSONL →    │   │ grpo or   │   │ frozen   │   │ promote or  │
+  │ games ×   │   │ parquet    │   │ reject_sft│   │ suites + │   │ rollback    │
+  │ monitors  │   │            │   │ (+LoRA)   │   │ ELO      │   │             │
+  └───────────┘   └────────────┘   └───────────┘   └──────────┘   └─────────────┘
+        ▲                                                               │
+        └───────────────── champion model (gen N+1) ◀───────────────────┘
+```
+
+## Five decoupled layers
+
+1. **Games** (`slm_rl/games/`) — pure-Python, seed-deterministic, text-native engines implementing one `Game` ABC (`games/base.py`). No ML dependencies. Registered via `@register_game` + setuptools entry points (plugin system).
+2. **Agents & Inference** (`slm_rl/agents/`, `slm_rl/inference/`) — an `Agent` turns observations into `ActionDecision`s via a pluggable `InferenceBackend` (transformers CUDA/MPS, vLLM, llama.cpp GGUF, MLX). Hardware tier detection (`platform/hardware.py`) selects model + backend from `configs/hardware.yaml`.
+3. **Rollout & Datagen** (`slm_rl/rollout/`, `slm_rl/datagen/`) — `EpisodeRunner` with the `DoomLoopMonitor` wired in; every decision persisted as a `RolloutRecord` (streamed JSONL → consolidated parquet). Datasets are a first-class product with a versioned schema (`datagen/schema.py`), reusable for SFT warm-start and offline RL.
+4. **Training** (`slm_rl/training/`) — two `TrainingStrategy` implementations behind one interface: `grpo` (TRL + PEFT LoRA, CUDA) and `reject_sft` (rejection-sampling SFT, universal). Optional antidoom hygiene stage.
+5. **Eval & Orchestration** (`slm_rl/eval/`, `slm_rl/orchestrator/`) — fixed-seed benchmark suites, ELO league with bot anchors, `EvalGate` promotion/rollback, on-disk `ModelRegistry`, metrics + streamlit dashboard.
+
+## The 8GB principle
+
+**Every layer has an 8GB-RAM path** — the full self-improvement loop runs on an 8GB machine with no GPU. Enforced budget rules:
+
+- Default 8GB model: `LFM2.5-350M` (text) / `LFM2.5-VL-450M` (vision), 4-bit quantized (≤1GB resident) via llama.cpp or MLX — never vLLM or fp16 transformers on this tier.
+- **One model resident at a time**: frozen-generation opponents are LoRA adapter hot-swaps, never a second model copy.
+- Context capped (≤2048 tokens); observation renderers are designed to stay small.
+- Rollouts stream to JSONL (never accumulated in RAM); parquet consolidation is chunked.
+- ALE runs in-process via `ale-py` (~100MB), not the Docker OpenEnv image, on low-RAM tiers.
+- Heavy dependencies (torch, trl, vllm, mlx, ale-py, openenv) are optional extras, imported lazily — the core package imports clean with none installed.
+- CI gate: a mini full loop (rollout → consolidate → reject_sft → eval) must complete under a hard 7GB memory cap.
+
+Training is **tier-adaptive** (see DECISIONS.md D10): CUDA machines use GRPO for fastest improvement; everything else uses rejection-sampling SFT — same rollout runner, dataset schema, eval gate, and registry, only the TRAIN box differs.
+
+## External ecosystem positioning
+
+- **Gymnasium-style core, OpenEnv at the edge**: games implement our own text-native contract; `bridges/gym_adapter.py` wraps external Gymnasium envs (ALE) in, and `bridges/openenv_bridge.py` wraps our games out as OpenEnv servers (TRL `environment_factory` path, Phase 5). OpenEnv is experimental/breaking, so it's an optional pinned extra — and in-process rollouts are 10–100× cheaper per step than HTTP.
+- **antidoom** (Liquid AI) inspired the doom-loop concepts; the actual FTPO tool is an optional between-generations hygiene stage (`training/hygiene.py`).
+- The user-shared OpenEnv reference (`examples/atari_simple.py` upstream) is recreated against our API in `examples/atari_simple.py` — same reset/step/legal_actions shape, no Docker required.
+
+## On-disk layout
+
+```
+runs/<run_id>/
+  run_config.yaml              frozen resolved config
+  registry.json                champion pointer + history + ELO
+  generations/gen_NNN/
+    adapter/                   PEFT LoRA adapter (unmerged, hot-swappable)
+    rollouts/*.jsonl           raw per-episode step records
+    dataset/train.parquet      consolidated training view
+    eval/results.json
+    metrics.json               train + eval + doom-loop stats
+    MANIFEST.json              base model id, parent gen, config hash, git sha
+datasets/                      cross-run consolidated parquet (the data product)
+```
+
+Adapters stay unmerged; `slm-rl export --gen N --merge [--gguf]` produces merged/quantized artifacts for Mac play.
+
+## Anti-doom-loop design (two levels)
+
+**Rollout level — `DoomLoopMonitor`** (`rollout/monitor.py`), per step:
+
+| Signal | Definition | Default |
+|---|---|---|
+| `action_repeat` | identical-action streak | ≥3 |
+| `ngram_loop` | action n-gram (n=2–4) repeated consecutively | ≥3× |
+| `state_revisit` | visits to current `state_hash()` in episode | ≥3 |
+| `reward_stagnation` | steps since cumulative reward last rose | ~15 (per game) |
+| `invalid_streak` | consecutive invalid actions | ≥3 |
+
+Intervention ladder (escalating, all logged into `RolloutRecord.monitor_flags`):
+1. **Reflect** — inject a nudge listing untried moves + mask the looping action from the menu for one turn.
+2. **Backtrack** — restore an earlier `Game.snapshot()` checkpoint and mark the looping branch (the explicit answer to "the system needs a way to backtrack").
+3. **Truncate** — end the episode with a shaped penalty (−0.5), `truncated_by_monitor=True`.
+
+**Training level** (prevents reward concentrating on one branch):
+- Entropy floor + bonus, with abort-and-rollback on sustained collapse.
+- KL to the *previous champion* (bounded drift, compounding progress).
+- Reward hygiene: clipped shaping (low weight ~0.1–0.2), programmatic rule-based rewards only.
+- **EvalGate**: promote only if primary metric ≥ champion + margin AND intervention rate, invalid rate, and entropy don't regress. Two consecutive failures → auto-remediation (halve LR, raise entropy bonus, optional antidoom stage). Rollback = the champion pointer never moves.
+
+## Verification strategy
+
+- Per-game engines: pure-Python unit tests (legal moves, terminal detection, scoring) — CPU, no models.
+- Parsing ladder: golden tests over malformed completions.
+- End-to-end smoke (CPU): `slm-rl rollout --game mastermind --agent random` → valid JSONL → parquet.
+- Full-loop proof: `slm-rl evolve --game mastermind --generations 5` with a rising win-rate curve, on both an 8GB machine (reject_sft) and a CUDA card (GRPO).
+- 8GB memory-budget CI gate (hard cap, peak RSS < 7GB).
+- Doom-loop machinery: a scripted degenerate agent must trigger reflect → backtrack → truncate in order.

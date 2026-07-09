@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slm-rl"
+version = "0.1.0"
+description = "A self-improving game gymnasium for small language models: play, collect, fine-tune, improve."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+# Heavy dependencies are extras on purpose: the core package must import and run
+# (play / datagen / eval) on an 8GB machine with none of these installed.
+cuda = ["torch", "transformers", "trl>=1.0", "peft", "bitsandbytes", "datasets", "accelerate"]
+vllm = ["vllm"]
+mac = ["mlx-lm; sys_platform == 'darwin'", "llama-cpp-python"]
+cpu = ["llama-cpp-python"]
+atari = ["ale-py", "gymnasium"]
+openenv = ["openenv>=0.4,<0.5"]
+dashboard = ["streamlit", "pandas", "pyarrow"]
+dev = ["pytest>=8.0", "pytest-cov"]
+
+[project.scripts]
+slm-rl = "slm_rl.cli:app"
+
+[project.entry-points."slm_rl.games"]
+# Built-in games register here so third-party plugins follow the exact same mechanism.
+mastermind = "slm_rl.games.mastermind:MastermindGame"
+connect4 = "slm_rl.games.connect4:Connect4Game"
+blackjack = "slm_rl.games.blackjack:BlackjackGame"
+atari_freeway = "slm_rl.games.atari:FreewayGame"
+dominion = "slm_rl.games.dominion:DominionGame"
+
+[tool.hatch.build.targets.wheel]
+packages = ["slm_rl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

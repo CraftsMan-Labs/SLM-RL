@@ -1,0 +1,11 @@
+# Rejection-sampling SFT (universal 8GB path) — also the gen-0 warm-start
+# recipe for GRPO tiers.
+train:
+  strategy: reject_sft
+  lora_rank: 16
+  lora_alpha: 32
+  learning_rate: 1.0e-4
+  episodes_per_generation: 200
+  selection_quantile: 0.25            # keep top 25% trajectories by reward
+  exclude_monitor_flagged: true       # loop-free training data only
+  max_duplicate_action_sequences: 3   # diversity quota vs mode collapse

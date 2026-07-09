@@ -1,0 +1,10 @@
+# Atari Freeway via ALE (Phase 3): RAM -> text observations, in-process ale-py.
+max_turns: 500               # decision points after frame-skip downsampling
+eval_episodes: 100
+monitor:
+  interventions: [reflect, truncate]
+  reward_stagnation_window: 40
+extra:
+  rom: freeway
+  obs_type: ram
+  frameskip: 8

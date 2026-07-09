@@ -1,0 +1,8 @@
+# Blackjack (Phase 2): stochastic — paired-seed eval, larger GRPO groups.
+max_turns: 20
+eval_episodes: 1000          # high variance needs a big fixed suite
+monitor:
+  interventions: [reflect, truncate]   # never backtrack a card draw
+extra:
+  num_decks: 1
+  dealer_stands_on: 17

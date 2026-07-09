@@ -1,0 +1,34 @@
+# Hardware tier table. First matching tier wins — ordered most -> least
+# capable, ending with the universal 8GB floor (no match conditions).
+# Detection (slm_rl/platform/hardware.py) resolves against this table only;
+# models are never hardcoded. Override with --tier/--model/--backend.
+tiers:
+  - name: cuda-24gb
+    min_cuda_vram_gb: 20
+    model: google/gemma-4-E2B-it
+    backend: vllm            # rollouts; training uses transformers + bnb-4bit
+    train: grpo
+    quantization: null
+
+  - name: cuda-8-16gb
+    min_cuda_vram_gb: 6
+    model: LiquidAI/LFM2.5-1.2B
+    backend: transformers-4bit
+    train: grpo
+    quantization: q4
+
+  - name: mac-16gb
+    os: darwin
+    min_ram_gb: 15
+    model: LiquidAI/LFM2.5-VL-1.6B
+    backend: mlx
+    train: reject_sft        # GRPO needs CUDA; rejection-sampling SFT via mlx-lm
+    quantization: q4
+
+  # Universal floor: any machine with ~8GB RAM, no GPU required.
+  # The FULL self-improvement loop works here (reject_sft training strategy).
+  - name: any-8gb
+    model: LiquidAI/LFM2.5-350M   # use LFM2.5-VL-450M for vision games
+    backend: llama_cpp
+    train: reject_sft
+    quantization: q4

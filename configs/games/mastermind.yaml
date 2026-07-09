@@ -1,0 +1,11 @@
+# Mastermind (Phase 1): guess a hidden 4-peg code from 6 colors.
+max_turns: 12
+eval_episodes: 500
+eval_seeds_start: 10000
+monitor:
+  interventions: [reflect, truncate]   # backtrack pointless: no state to revisit
+  action_repeat_threshold: 2           # repeating a guess is always wasted
+extra:
+  code_length: 4
+  num_colors: 6
+  allow_duplicates: true
