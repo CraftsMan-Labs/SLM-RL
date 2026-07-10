@@ -71,3 +71,32 @@ catan = "catan_pkg.env:CatanGame"
 ## 5. Test
 
 Engine tests are pure Python and must not need a model: legal-move generation, terminal detection, scoring, determinism given a seed, and `state_hash` stability. See `tests/` for the pattern.
+
+## 6. Atari games as plugins
+
+Every ALE game follows the same self-contained recipe — a `Game` subclass
+holding an `ale-py` env with `obs_type="ram"`, plus three per-game pieces and
+**no changes to the training/orchestration side**:
+
+1. **RAM decoder** (`games/atari/ram_maps/<game>.py`) — byte offsets → named
+   state variables. The AtariARI annotations (Anand et al.) document these
+   offsets for ~22 games; being on that list is the practical feasibility test.
+2. **Text renderer** — the decoded variables as a compact observation
+   (≲15 lines; the 8GB tier budget applies).
+3. **Action map + frame-skip** — the minimal discrete action set, with one
+   LLM decision covering ~4–8 frames. ALE steps synchronously, so slow
+   decisions are fine — the game waits.
+
+Candidate ramp, easiest first (all AtariARI-annotated):
+
+| Game | State to render | Why this position |
+|---|---|---|
+| Freeway | chicken y, car x's | 3 actions, one goal — the Phase 3 opener |
+| Pong | ball x/y, paddle y | whole state is 3 numbers; good doom-loop test (paddle jitter) |
+| Breakout | + brick count | Pong plus dense score reward — suits GRPO |
+| Space Invaders | player x, alien columns, bombs, lives | dense reward; dodge-vs-shoot timing gets coarse under frame-skip |
+| Ms. Pac-Man | pellet map, 4 ghosts, maze | flagship-tier: long horizon, big observation, maze reasoning — attempt after the ramp, likely with VL models reading frames instead of RAM text |
+
+Dense-score games (Pong, Breakout, Space Invaders) fit the GRPO strategy
+especially well: the environment reward itself provides group variance that
+sparse-win games like Mastermind need engineered rewards for.

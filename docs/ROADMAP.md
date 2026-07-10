@@ -27,6 +27,7 @@ The milestone that proves the whole thesis end-to-end.
 ## Phase 3 — Atari + anti-doom hardening
 
 - `gym_adapter.py` + ALE Freeway RAM→text renderer, decision-point downsampling
+- Further ALE games as self-contained plugins, easiest-first ramp: Pong → Breakout → Space Invaders (→ Ms. Pac-Man as a flagship-tier stretch) — see PLUGIN_GUIDE.md §6
 - Full monitor suite: state-hash revisits, reward stagnation, reflect/backtrack/truncate ladder + degenerate-agent tests
 - Entropy-floor alarm + auto-remediation; optional antidoom hygiene stage
 - SFT warm-start pipeline from heuristic/teacher traces (tiny models need it for Atari)
