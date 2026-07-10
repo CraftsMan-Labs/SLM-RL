@@ -104,6 +104,7 @@ class RunConfig(BaseModel):
     model: str | None = None  # explicit overrides beat the tier table
     backend: Backend | None = None
     train_strategy: TrainStrategy | None = None
+    hf_dataset_repo: str | None = None  # push each generation's datasets to this HF dataset repo
     max_context_tokens: int = 2048  # 8GB budget rule
     train: TrainConfig = Field(default_factory=TrainConfig)
     gate: GateConfig = Field(default_factory=GateConfig)

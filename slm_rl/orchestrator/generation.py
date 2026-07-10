@@ -163,7 +163,18 @@ class GenerationRunner:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-        # 8. Auto-remediation after repeated failures
+        # 8. Optional dataset publication (best-effort, never kills the loop)
+        if self.cfg.hf_dataset_repo:
+            from slm_rl.datagen.hf_push import try_push_generation
+
+            url = try_push_generation(
+                self.cfg.hf_dataset_repo, self.cfg.run_id, generation,
+                self.paths.generation(generation),
+            )
+            if url:
+                print(f"datasets pushed: {url}")
+
+        # 9. Auto-remediation after repeated failures
         if self.registry.consecutive_failures >= self.cfg.gate.max_consecutive_failures:
             self.cfg.train.learning_rate /= 2
             self.cfg.train.entropy_bonus *= 2

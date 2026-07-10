@@ -166,6 +166,7 @@ def evolve(
     tier: str = typer.Option(None),
     episodes: int = typer.Option(None, help="Override episodes per generation"),
     train_strategy: str = typer.Option(None, help="grpo | reject_sft (default: tier's)"),
+    hf_repo: str = typer.Option(None, help="Push each generation's datasets to this HF dataset repo"),
 ) -> None:
     """Run the full self-improvement loop for N generations."""
     from slm_rl.config.loader import load_run_config
@@ -173,7 +174,7 @@ def evolve(
 
     overrides = {
         "run_id": run_id, "model": model, "backend": backend, "tier": tier,
-        "train_strategy": train_strategy,
+        "train_strategy": train_strategy, "hf_dataset_repo": hf_repo,
     }
     if episodes:
         overrides["train"] = {"episodes_per_generation": episodes}
@@ -187,6 +188,30 @@ def evolve(
             f"gen {g}: primary={m['eval']['primary']:.3f} "
             f"promoted={m['gate']['promoted']} ({m['gate']['reason']})"
         )
+
+
+@app.command("push-data")
+def push_data(
+    repo: str = typer.Argument(..., help="HF dataset repo id, e.g. CraftsMan-Labs/slm-rl-mastermind"),
+    run_id: str = typer.Option("default"),
+    home: str = typer.Option("./runs"),
+    public: bool = typer.Option(False, help="Create the repo public (default private)"),
+) -> None:
+    """Upload an existing run's per-generation datasets to the HF Hub."""
+    from pathlib import Path
+
+    from slm_rl.datagen.hf_push import push_generation
+    from slm_rl.orchestrator.paths import RunPaths
+
+    paths = RunPaths(home, run_id)
+    gens = sorted(paths.root.glob("generations/gen_*"))
+    if not gens:
+        typer.secho(f"no generations under {paths.root}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    for gen_dir in gens:
+        g = int(gen_dir.name.split("_")[1])
+        url = push_generation(repo, run_id, g, Path(gen_dir), private=not public)
+        typer.echo(f"gen {g} -> {url}")
 
 
 @app.command("eval")
