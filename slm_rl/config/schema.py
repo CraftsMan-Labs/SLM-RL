@@ -69,9 +69,11 @@ class TrainConfig(BaseModel):
     lora_alpha: int = 32
     learning_rate: float = 5e-5
     # grpo-specific
-    group_size: int = 4
+    group_size: int = 8
     kl_beta: float = 0.02  # KL to previous champion
-    entropy_floor: float = 0.3
+    # short "ACTION: X" completions sit at ~0.1-0.3 mean token entropy when
+    # healthy; measured collapse is ~0.002. 0.05 separates them cleanly.
+    entropy_floor: float = 0.05
     entropy_bonus: float = 0.01
     distinct_action_bonus: float = 0.0  # behind a flag; ablate in Phase 3
     max_completion_tokens: int = 256

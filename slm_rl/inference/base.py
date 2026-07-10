@@ -39,6 +39,10 @@ class InferenceBackend(ABC):
         adapter support raise."""
         raise NotImplementedError(f"{type(self).__name__} does not support adapters")
 
+    def close(self) -> None:
+        """Free the model / GPU memory. The single-GPU rollout->train handoff
+        relies on this. No-op by default."""
+
     @property
     def supports_constrained_decoding(self) -> bool:
         return False

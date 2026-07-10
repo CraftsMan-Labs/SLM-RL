@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from slm_rl.config.schema import TrainConfig
+from slm_rl.config.schema import GameConfig, TrainConfig
 
 
 @dataclass
@@ -28,9 +28,10 @@ class TrainResult:
 class TrainingStrategy(ABC):
     name: str
 
-    def __init__(self, cfg: TrainConfig, model_id: str):
+    def __init__(self, cfg: TrainConfig, model_id: str, game_cfg: GameConfig | None = None):
         self.cfg = cfg
         self.model_id = model_id
+        self.game_cfg = game_cfg  # needed by grpo (env-grounded rewards); reject_sft ignores it
 
     @abstractmethod
     def train(
@@ -41,14 +42,16 @@ class TrainingStrategy(ABC):
     ) -> TrainResult: ...
 
 
-def create_strategy(name: str, cfg: TrainConfig, model_id: str) -> TrainingStrategy:
+def create_strategy(
+    name: str, cfg: TrainConfig, model_id: str, game_cfg: GameConfig | None = None
+) -> TrainingStrategy:
     """Lazy factory — heavy imports stay inside the strategy modules."""
     if name == "grpo":
         from slm_rl.training.grpo import GRPOStrategy
 
-        return GRPOStrategy(cfg, model_id)
+        return GRPOStrategy(cfg, model_id, game_cfg)
     if name == "reject_sft":
         from slm_rl.training.reject_sft import RejectSFTStrategy
 
-        return RejectSFTStrategy(cfg, model_id)
+        return RejectSFTStrategy(cfg, model_id, game_cfg)
     raise ValueError(f"Unknown training strategy {name!r}")

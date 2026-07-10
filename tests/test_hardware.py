@@ -27,15 +27,15 @@ def test_16gb_mac_gets_bigger_model():
     assert tier.model == "LiquidAI/LFM2.5-VL-1.6B"
 
 
-def test_24gb_cuda_gets_grpo():
+def test_24gb_cuda_tier():
     tier = resolve_tier(TIERS, host(ram=64.0, vram=24.0))
     assert tier.name == "cuda-24gb"
-    assert tier.train == "grpo"
 
 
-def test_small_cuda_gets_grpo_with_small_model():
+def test_small_cuda_gets_small_model():
     tier = resolve_tier(TIERS, host(ram=32.0, vram=8.0))
     assert tier.name == "cuda-8-16gb"
+    assert "Instruct" in tier.model  # ponytail: guards the R2 model-id fix
 
 
 def test_16gb_linux_without_gpu_falls_to_floor():

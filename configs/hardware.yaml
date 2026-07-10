@@ -5,17 +5,17 @@
 tiers:
   - name: cuda-24gb
     min_cuda_vram_gb: 20
-    model: google/gemma-4-E2B-it
-    backend: vllm            # rollouts; training uses transformers + bnb-4bit
-    train: grpo
+    model: google/gemma-4-E2B-it   # ponytail: unverified model id — swap if load fails
+    backend: transformers
+    train: grpo                    # reject_sft plateaued on mastermind (R7) -> grpo
     quantization: null
 
   - name: cuda-8-16gb
     min_cuda_vram_gb: 6
-    model: LiquidAI/LFM2.5-1.2B
-    backend: transformers-4bit
-    train: grpo
-    quantization: q4
+    model: LiquidAI/LFM2.5-1.2B-Instruct
+    backend: transformers          # bf16; use transformers-4bit + quantization q4 only if OOM
+    train: grpo                    # reject_sft plateaued on mastermind (R7) -> grpo
+    quantization: null
 
   - name: mac-16gb
     os: darwin

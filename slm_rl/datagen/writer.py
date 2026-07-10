@@ -9,11 +9,20 @@ from slm_rl.datagen.schema import RolloutRecord
 
 
 class RolloutWriter:
-    def __init__(self, path: Path):
-        raise NotImplementedError("Phase 1")
+    def __init__(self, path: Path | str):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = open(self.path, "a", encoding="utf-8")
 
     def write(self, record: RolloutRecord) -> None:
-        raise NotImplementedError("Phase 1")
+        self._file.write(record.to_json() + "\n")
+        self._file.flush()
 
     def close(self) -> None:
-        raise NotImplementedError("Phase 1")
+        self._file.close()
+
+    def __enter__(self) -> "RolloutWriter":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()

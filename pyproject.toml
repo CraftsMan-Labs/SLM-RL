@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 # Heavy dependencies are extras on purpose: the core package must import and run
 # (play / datagen / eval) on an 8GB machine with none of these installed.
-cuda = ["torch", "transformers", "trl>=1.0", "peft", "bitsandbytes", "datasets", "accelerate"]
+cuda = ["torch", "transformers>=5.0", "trl>=1.8", "peft", "bitsandbytes", "datasets", "accelerate", "pyarrow"]
 vllm = ["vllm"]
 mac = ["mlx-lm; sys_platform == 'darwin'", "llama-cpp-python"]
 cpu = ["llama-cpp-python"]

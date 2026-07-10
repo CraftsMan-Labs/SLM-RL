@@ -43,6 +43,12 @@ class ModelRegistry:
                 break
         return n
 
+    @property
+    def next_generation(self) -> int:
+        """First unrun generation number (gen 0 = base model). Resumable."""
+        seen = [e["generation"] for e in self._data["history"]]
+        return max(seen, default=0) + 1
+
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self._data, indent=2))

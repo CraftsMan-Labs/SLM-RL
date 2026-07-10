@@ -12,9 +12,9 @@ train:
   lora_rank: 16
   lora_alpha: 32
   learning_rate: 5.0e-5
-  group_size: 4
+  group_size: 8
   kl_beta: 0.02
-  entropy_floor: 0.3
+  entropy_floor: 0.05   # healthy short-completion entropy ~0.1-0.3; collapse ~0.002
   entropy_bonus: 0.01
   distinct_action_bonus: 0.0
   max_completion_tokens: 256
