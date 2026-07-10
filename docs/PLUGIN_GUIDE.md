@@ -36,6 +36,7 @@ class MyGame(Game):
 Optional overrides:
 - `snapshot() / restore()` — state checkpoints for the backtrack intervention (default pickles `__dict__`; override for efficiency or to exclude caches).
 - `heuristic_opponents()` — named scripted opponents (e.g. Big Money for Dominion). Strongly recommended for competitive games: they anchor the ELO league and serve as eval baselines.
+- `vector_obs()` — the state as a flat float vector (Atari: the 128 RAM bytes). Enables classical-RL teachers (CleanRL-pattern DQN) for warm-start traces, menu pruning, and reward shaping — see HYBRID_RL.md.
 
 ## 2. Design the observation for a small model
 

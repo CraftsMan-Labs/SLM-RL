@@ -27,6 +27,7 @@ The system is organized around a **generation loop** run by the orchestrator (`s
 3. **Rollout & Datagen** (`slm_rl/rollout/`, `slm_rl/datagen/`) — `EpisodeRunner` with the `DoomLoopMonitor` wired in; every decision persisted as a `RolloutRecord` (streamed JSONL → consolidated parquet). Datasets are a first-class product with a versioned schema (`datagen/schema.py`), reusable for SFT warm-start and offline RL.
 4. **Training** (`slm_rl/training/`) — two `TrainingStrategy` implementations behind one interface: `grpo` (TRL + PEFT LoRA, CUDA) and `reject_sft` (rejection-sampling SFT, universal). Optional antidoom hygiene stage.
 5. **Eval & Orchestration** (`slm_rl/eval/`, `slm_rl/orchestrator/`) — fixed-seed benchmark suites, ELO league with bot anchors, `EvalGate` promotion/rollback, on-disk `ModelRegistry`, metrics + streamlit dashboard.
+6. **Teachers** (`slm_rl/teachers/`, planned — see HYBRID_RL.md / D11) — cheap classical policies (exact solvers, CleanRL-pattern DQN over `Game.vector_obs()`) that implement the same `Agent` ABC. They feed the loop at three seams — trajectory warm-start via `reject_sft`, top-k action-menu pruning during rollout, potential-based reward shaping during GRPO — and are barred from eval, so the gate always measures pure LLM skill.
 
 ## The 8GB principle
 

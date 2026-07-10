@@ -19,6 +19,7 @@ The milestone that proves the whole thesis end-to-end.
 
 ## Phase 2 — Competitive + stochastic
 
+- Hybrid-RL seam 1+2 on Mastermind (HYBRID_RL.md): exact consistency solver as teacher-Agent → `reject_sft` warm-start, and as top-k menu pruner — validates the teacher pipeline with zero DQN training
 - Connect-4 engine + heuristic bot (shallow minimax)
 - `OpponentPool` with frozen-generation league; ELO module with bot anchors
 - Blackjack engine + basic-strategy eval baseline; variance handling (larger GRPO groups, paired-seed eval)
@@ -31,6 +32,7 @@ The milestone that proves the whole thesis end-to-end.
 - Full monitor suite: state-hash revisits, reward stagnation, reflect/backtrack/truncate ladder + degenerate-agent tests
 - Entropy-floor alarm + auto-remediation; optional antidoom hygiene stage
 - SFT warm-start pipeline from heuristic/teacher traces (tiny models need it for Atari)
+- `teachers/dqn.py` — CleanRL-pattern single-file DQN over `Game.vector_obs()` (Atari RAM bytes) as the learned teacher: warm-start traces, top-k menus, V(s) reward shaping for GRPO (HYBRID_RL.md, D11)
 
 ## Phase 4 — Dominion + product polish
 

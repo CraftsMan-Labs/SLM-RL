@@ -66,3 +66,22 @@ Two `TrainingStrategy` implementations behind one interface (`training/base.py`)
 
 **Why**: GRPO on Apple Silicon/MLX is not yet mature (mid-2026), and the user requires the *full* loop on 8GB. `reject_sft` is also the gen-0 warm-start GRPO needs, so it's built first. Known trade-off: it improves more slowly and can plateau (it only reinforces behaviors the model already samples) — mitigated by sampling temperature/diversity and documented honestly; GRPO tiers exist for faster progress.
 **Revisit if**: MLX GRPO (`mlx-tune`, `MLX-GRPO`) reaches TRL-level stability.
+
+## D11. Classical-RL teachers around the LLM loop (CleanRL pattern)
+
+Cheap classical learners (exact solvers where they exist; otherwise a
+CleanRL-style single-file DQN over a `Game.vector_obs()` hook) scaffold the
+LLM loop at three seams: teacher trajectories → `reject_sft` warm-start;
+teacher top-k → pruned action menus; teacher V(s) → potential-based GRPO
+reward shaping. Teachers implement the same `Agent` ABC, so the entire
+datagen stack works on them unchanged. **Eval stays LLM-only** — teachers
+assist training, never the gate. See HYBRID_RL.md.
+
+**Why**: measured (grpo-1p2b, Jul 2026) — pure-LLM GRPO spent ~2 GPU-hours to
+move win rate 0.4%→0.6%, blocked on exploration-from-zero and repetition.
+Classical steps are ~10⁴× cheaper; letting them do exploration/dense-signal
+discovery reserves LLM compute for language reasoning and evaluation.
+CleanRL (MIT) is a pattern reference (single-file, torch+Gymnasium), not a
+dependency.
+**Revisit if**: teacher-distilled policies cap the LLM's ceiling (imitation
+lock-in) — then reduce teacher mixing per generation rather than dropping it.
