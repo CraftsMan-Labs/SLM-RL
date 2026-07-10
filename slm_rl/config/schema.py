@@ -84,6 +84,17 @@ class TrainConfig(BaseModel):
     max_duplicate_action_sequences: int = 3  # diversity quota vs mode collapse
 
 
+class TeacherConfig(BaseModel):
+    """Classical-teacher seams (HYBRID_RL.md, D11). Rollout/eval concern, so
+    it lives here rather than on TrainConfig; games stay ML-free."""
+
+    pruner: bool = False  # consistent-candidate menu pruning during rollout
+    pruner_top_k: int = 10
+    pruner_fraction: float = 0.5  # fraction of rollout episodes pruned (rest stay format-mode, matching the gate eval)
+    warmstart_episodes: int = 1000  # teacher episodes for the gen-1 warm start
+    eval_pruned_episodes: int = 100  # with-pruner side metric; 0 disables; never gated
+
+
 class GateConfig(BaseModel):
     """EvalGate promotion criteria (D4, training level)."""
 
@@ -108,3 +119,4 @@ class RunConfig(BaseModel):
     max_context_tokens: int = 2048  # 8GB budget rule
     train: TrainConfig = Field(default_factory=TrainConfig)
     gate: GateConfig = Field(default_factory=GateConfig)
+    teacher: TeacherConfig = Field(default_factory=TeacherConfig)

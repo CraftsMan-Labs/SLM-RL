@@ -6,15 +6,18 @@ from types import SimpleNamespace
 
 from slm_rl.agents.llm_agent import extract_action_token, parse_action
 from slm_rl.games.base import ActionSpec
-from slm_rl.training.grpo import EntropyFloorCallback, consistency_reward, format_reward
+from slm_rl.training.grpo import EntropyFloorCallback, deduction_reward, format_reward
 
 CTX = json.dumps({"secret": "RGBY", "colors": "RGBYOP", "dup_ok": True, "prior": []})
 
 
-def ctx_with_prior(*prior):
-    return json.dumps(
-        {"secret": "RGBY", "colors": "RGBYOP", "dup_ok": True, "prior": list(prior)}
-    )
+def small_ctx(*prior, menu=None):
+    """2-peg, 2-color game: candidate space {RR, RG, GR, GG}, secret RG —
+    every elimination value is hand-computable."""
+    ctx = {"secret": "RG", "colors": "RG", "dup_ok": True, "prior": list(prior)}
+    if menu is not None:
+        ctx["menu"] = menu
+    return json.dumps(ctx)
 
 
 def test_format_reward_tiers():
@@ -32,20 +35,52 @@ def test_completions_may_be_message_lists():
     assert format_reward(completions=completions, game_ctx=[CTX]) == [0.25]
 
 
-def test_consistency_fraction_and_secret_bonus():
-    # secret RGBY; prior guess RRRR scored (1 exact, 0 partial)
-    ctx = ctx_with_prior(["RRRR", 1, 0])
+def test_deduction_elimination_and_secret_bonus():
+    # secret RG. Feedback (0,2) from GR pins the set to {RG} -> r=1.0;
+    # GG's (1,0) leaves {RG, GR} -> r=0.5; the secret adds +1.0 on top.
     completions = [
-        "ACTION: GGGG",   # feedback vs RRRR would be (0,0) != (1,0) -> inconsistent
-        "ACTION: GBYR",   # feedback vs RRRR is (1,0) -> consistent
-        "ACTION: RGBY",   # consistent AND the secret -> 1 + 1
-        "gibberish",      # unparseable -> 0 (format_reward penalizes)
+        "ACTION: GR",   # eliminates 4 -> 1: (log4 - log1)/log4 = 1.0
+        "ACTION: GG",   # leaves {RG, GR}:   (log4 - log2)/log4 = 0.5
+        "ACTION: RG",   # secret hit: elimination 1.0 + bonus 1.0
+        "gibberish",    # unparseable -> 0 (format_reward penalizes)
     ]
-    assert consistency_reward(completions=completions, game_ctx=[ctx] * 4) == [0.0, 1.0, 2.0, 0.0]
+    rewards = deduction_reward(completions=completions, game_ctx=[small_ctx()] * 4)
+    assert rewards == [1.0, 0.5, 2.0, 0.0]
+    # informative > uninformative, and empty-history groups differentiate
+    # (the old consistency fraction was constant 0.0 on turn 0)
+    assert rewards[0] > rewards[1] > 0.0
 
 
-def test_consistency_empty_history_is_zero():
-    assert consistency_reward(completions=["ACTION: OOOO"], game_ctx=[CTX]) == [0.0]
+def test_deduction_repeat_penalty():
+    # the old consistency reward scored a repeated wrong guess (k-1)/k —
+    # near-max — which is why GRPO never killed the repeat doom loop
+    ctx = small_ctx(["GG", 1, 0])
+    assert deduction_reward(completions=["ACTION: GG"], game_ctx=[ctx]) == [-1.0]
+
+
+def test_deduction_single_candidate_guard():
+    # prior pins the secret: |before| == 1, so elimination is undefined ->
+    # 0.0 unless the guess IS the secret (then just the +1.0 hit bonus)
+    ctx = small_ctx(["GR", 0, 2])  # only RG remains consistent
+    assert deduction_reward(completions=["ACTION: RG"], game_ctx=[ctx]) == [1.0]
+    assert deduction_reward(completions=["ACTION: RR"], game_ctx=[ctx]) == [0.0]
+
+
+def test_menu_index_resolution():
+    ctx = small_ctx(menu=["GG", "RG", "GR"])
+    completions = ["ACTION: 1", "ACTION: 2", "ACTION: 3"]
+    # an all-consistent (pruned) menu must still differentiate the group —
+    # under the old consistency fraction all three scored 1.0 (dead gradient)
+    assert deduction_reward(completions=completions, game_ctx=[ctx] * 3) == [0.5, 2.0, 1.0]
+    assert format_reward(completions=["ACTION: 2"], game_ctx=[ctx]) == [0.25]
+
+
+def test_menu_illegal_tokens():
+    ctx = small_ctx(menu=["GG", "RG"])
+    assert format_reward(completions=["ACTION: 9"], game_ctx=[ctx]) == [-0.5]   # out of range
+    assert format_reward(completions=["ACTION: RR"], game_ctx=[ctx]) == [-0.5]  # off-menu code
+    # no menu: a bare index has nothing to resolve against (format mode)
+    assert format_reward(completions=["ACTION: 2"], game_ctx=[small_ctx()]) == [-0.5]
 
 
 def test_entropy_callback_trips_after_patience():

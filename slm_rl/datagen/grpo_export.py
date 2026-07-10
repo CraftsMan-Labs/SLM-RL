@@ -13,6 +13,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+from slm_rl.agents.llm_agent import MENU_LIMIT
 from slm_rl.config.schema import GameConfig
 from slm_rl.datagen.sft_export import _iter_records
 from slm_rl.games.mastermind.env import score_guess
@@ -60,6 +61,11 @@ def export_grpo_dataset(dataset_path: Path, out_path: Path, game_cfg: GameConfig
                 "dup_ok": game.allow_duplicates,
                 "prior": prior,
             }
+            menu = rec.get("legal_actions") or []
+            if 0 < len(menu) <= MENU_LIMIT:
+                # pruned-menu prompt: the model answers by index, so rewards
+                # need the menu to resolve it (and to reject off-menu codes)
+                ctx["menu"] = menu
             rows.append((rec["step_idx"], {"prompt": prompt, "game_ctx": json.dumps(ctx)}))
 
     rows.sort(key=lambda t: t[0], reverse=True)  # later turns carry more feedback

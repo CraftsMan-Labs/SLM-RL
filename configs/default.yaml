@@ -29,3 +29,10 @@ gate:
   max_invalid_rate: 0.05
   min_mean_entropy: 0.2
   max_consecutive_failures: 2
+
+teacher:                     # classical-teacher seams (HYBRID_RL.md, D11)
+  pruner: false              # consistent-candidate menu pruning during rollout
+  pruner_top_k: 10
+  pruner_fraction: 0.5       # fraction of rollout episodes pruned; rest stay format-mode
+  warmstart_episodes: 1000   # teacher episodes for the gen-1 warm start (engine speed)
+  eval_pruned_episodes: 100  # with-pruner side metric; 0 disables; never gated

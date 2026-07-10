@@ -19,7 +19,7 @@ The milestone that proves the whole thesis end-to-end.
 
 ## Phase 2 — Competitive + stochastic
 
-- Hybrid-RL seam 1+2 on Mastermind (HYBRID_RL.md): exact consistency solver as teacher-Agent → `reject_sft` warm-start, and as top-k menu pruner — validates the teacher pipeline with zero DQN training
+- ✅ Hybrid-RL seams on Mastermind (HYBRID_RL.md): exact consistency solver as teacher-Agent → `reject_sft` warm-start (`evolve --warm-start`), top-k menu pruner (`--pruner`), and the exact elimination reward in GRPO — teacher pipeline validated with zero DQN training
 - Connect-4 engine + heuristic bot (shallow minimax)
 - `OpponentPool` with frozen-generation league; ELO module with bot anchors
 - Blackjack engine + basic-strategy eval baseline; variance handling (larger GRPO groups, paired-seed eval)

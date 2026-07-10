@@ -86,3 +86,27 @@ def test_nudge_is_injected_into_prompt():
     o.metadata["nudge"] = "Do NOT repeat your previous move."
     agent(backend).act(o, [])
     assert "Do NOT repeat" in backend.calls[0][-1]["content"]
+
+
+def test_build_messages_module_function_matches_agent():
+    # teachers stamp prompts via build_messages; it must render exactly what
+    # an LLMAgent sends (menu <= 30 actions, format instruction above)
+    from slm_rl.agents.llm_agent import build_messages
+
+    small = build_messages("sys", obs())
+    assert small[0] == {"role": "system", "content": "sys"}
+    assert "1) RGBY" in small[1]["content"]
+    assert small[1]["content"].endswith("ACTION: <your move>")
+
+    big_legal = [ActionSpec(id=f"A{i}", label=f"A{i}") for i in range(31)]
+    big = build_messages(
+        "sys",
+        Observation(text="t", legal_actions=big_legal, turn=0,
+                    metadata={"action_format": "a 4-letter code"}),
+    )
+    assert "a 4-letter code" in big[1]["content"]
+    assert "1)" not in big[1]["content"]
+
+    backend = ScriptedBackend(["ACTION: RGBY"])
+    agent(backend).act(obs(), [])
+    assert backend.calls[0][1]["content"] == build_messages("play mastermind", obs())[1]["content"]

@@ -11,13 +11,16 @@ previous champion.
 
 from __future__ import annotations
 
+import functools
 import gc
 import json
+import math
 from pathlib import Path
 
 from slm_rl.agents.llm_agent import extract_action_token
 from slm_rl.datagen.grpo_export import export_grpo_dataset
 from slm_rl.games.mastermind.env import score_guess
+from slm_rl.teachers.mastermind_solver import consistent_candidates
 from slm_rl.training.base import TrainingStrategy, TrainResult
 from slm_rl.training.lora import target_modules_for
 
@@ -41,12 +44,19 @@ def _legal_guess(completion, ctx: dict) -> str | None:
     token = extract_action_token(_completion_text(completion))
     if token is None:
         return None
+    menu = ctx.get("menu")  # present iff the prompt showed a pruned menu
+    if token.isdigit():
+        if menu and 1 <= int(token) <= len(menu):
+            return menu[int(token) - 1].upper()
+        return None
     guess = token.upper()
     ok = (
         len(guess) == len(ctx["secret"])
         and all(c in ctx["colors"] for c in guess)
         and (ctx.get("dup_ok", True) or len(set(guess)) == len(guess))
     )
+    if ok and menu and guess not in {m.upper() for m in menu}:
+        return None  # off-menu code: rollout's parse_action rejects it too
     return guess if ok else None
 
 
@@ -64,10 +74,23 @@ def format_reward(prompts=None, completions=None, game_ctx=None, **kwargs) -> li
     return out
 
 
-def consistency_reward(prompts=None, completions=None, game_ctx=None, **kwargs) -> list[float]:
-    """Fraction of prior (guess, feedback) pairs the candidate guess is
-    consistent with (i.e. it could still be the secret), +1 on a direct hit.
-    This is the deductive skill the SFT-trained model failed to learn."""
+@functools.lru_cache(maxsize=1024)  # >= grpo_export's 512-prompt cap
+def _consistent_set(colors: str, code_length: int, dup_ok: bool, prior_json: str) -> tuple[str, ...]:
+    prior = json.loads(prior_json)
+    return tuple(consistent_candidates(colors, code_length, dup_ok, prior))
+
+
+def deduction_reward(prompts=None, completions=None, game_ctx=None, **kwargs) -> list[float]:
+    """Exact elimination reward — HYBRID_RL.md seam 3 with potential
+    Phi(s) = -log|consistent(s)|, realized exactly for Mastermind.
+
+    Repeats score -1.0: the old consistency fraction scored a repeated wrong
+    guess (k-1)/k — near-max — which is why GRPO never killed the repeat doom
+    loop. Otherwise the reward is the fraction of remaining uncertainty the
+    guess eliminates (log-scale), so group samples differentiate even when a
+    pruned menu makes every option consistent (else reward std hits zero and
+    the gradient dies), +1.0 on a direct secret hit.
+    """
     out = []
     for completion, ctx_json in zip(completions, game_ctx):
         ctx = json.loads(ctx_json)
@@ -75,13 +98,20 @@ def consistency_reward(prompts=None, completions=None, game_ctx=None, **kwargs) 
         if guess is None:
             out.append(0.0)  # format_reward already penalized
             continue
+        if any(guess == g for g, _, _ in ctx["prior"]):
+            out.append(-1.0)  # repeated guess: zero information, doom-loop fuel
+            continue
+        secret = ctx["secret"]
+        before = _consistent_set(
+            ctx["colors"], len(secret), ctx.get("dup_ok", True), json.dumps(ctx["prior"])
+        )
         r = 0.0
-        if ctx["prior"]:
-            ok = sum(
-                1 for g, e, p in ctx["prior"] if score_guess(g, guess) == (e, p)
-            )
-            r += ok / len(ctx["prior"])
-        if guess == ctx["secret"]:
+        if len(before) > 1:
+            feedback = score_guess(guess, secret)
+            n_after = sum(1 for c in before if score_guess(guess, c) == feedback)
+            # secret is always in `before` and matches its own feedback -> n_after >= 1
+            r = (math.log(len(before)) - math.log(n_after)) / math.log(len(before))
+        if guess == secret:
             r += 1.0
         out.append(r)
     return out
@@ -169,7 +199,7 @@ class GRPOStrategy(TrainingStrategy):
         watchdog = EntropyFloorCallback(self.cfg.entropy_floor)
         trainer = GRPOTrainer(
             model=model,
-            reward_funcs=[format_reward, consistency_reward],
+            reward_funcs=[format_reward, deduction_reward],
             args=args,
             train_dataset=ds,
             peft_config=peft_config,
@@ -178,7 +208,9 @@ class GRPOStrategy(TrainingStrategy):
         trainer.train()
 
         metrics: dict = {"num_prompts": n_prompts}
-        for key in ("reward", "kl", "entropy", "loss"):
+        # frac_reward_zero_std ~1.0 means dead gradient (all group samples
+        # scored identically) — surfaced so acceptance runs can verify
+        for key in ("reward", "kl", "entropy", "loss", "frac_reward_zero_std"):
             vals = [row[key] for row in trainer.state.log_history if key in row]
             if vals:
                 metrics[key] = vals[-1]

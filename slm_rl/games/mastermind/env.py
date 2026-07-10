@@ -136,6 +136,9 @@ class MastermindGame(Game):
                     f"a {self.code_length}-letter code using the letters "
                     f"{'/'.join(self.colors)}, e.g. ACTION: "
                     f"{self.colors[:self.code_length] if self.allow_duplicates else self.colors[:self.code_length]}"
-                )
+                ),
+                # structured (guess, exact, partial) history so teachers and
+                # menu pruners never parse the rendered text (HYBRID_RL.md)
+                "history": [list(t) for t in self._history],
             },
         )

@@ -66,7 +66,7 @@ def _build_llm_agent(game_cls, game_cfg, model, backend, tier, adapter, temperat
 @app.command()
 def rollout(
     game: str = typer.Option("mastermind"),
-    agent: str = typer.Option("random", help="llm | random"),
+    agent: str = typer.Option("random", help="llm | random | solver (teacher)"),
     episodes: int = typer.Option(10),
     seed: int = typer.Option(0, help="First episode seed (consecutive after)"),
     run_id: str = typer.Option("adhoc"),
@@ -75,6 +75,7 @@ def rollout(
     backend: str = typer.Option(None),
     tier: str = typer.Option(None),
     adapter: str = typer.Option(None, help="LoRA adapter path (llm agent)"),
+    pruner: bool = typer.Option(False, "--pruner/--no-pruner", help="Teacher menu pruning"),
 ) -> None:
     """Generate rollouts (dataset product) without training."""
     from slm_rl.agents.bots import RandomAgent
@@ -97,8 +98,19 @@ def rollout(
             game_cls, game_cfg, model, backend, tier, adapter, temperature=0.8
         )
         make_agent = lambda i: llm  # noqa: E731 (stateless per turn -> reuse)
+    elif agent == "solver":
+        from slm_rl.teachers import make_teacher
+
+        solver, model_id = make_teacher(game_cfg, seed=seed)
+        make_agent = lambda i: solver  # noqa: E731
     else:
         make_agent = lambda i: RandomAgent(seed=seed + i)  # noqa: E731
+
+    pruner_obj = None
+    if pruner:
+        from slm_rl.teachers import make_pruner
+
+        pruner_obj = make_pruner(game_cfg, top_k=run_cfg.teacher.pruner_top_k)
 
     wins = 0
     try:
@@ -107,7 +119,7 @@ def rollout(
                 runner = EpisodeRunner(
                     game_cls(game_cfg), make_agent(i), game_cfg, writer=writer,
                     run_id=run_id, generation=generation, model_id=model_id,
-                    adapter_ref=adapter,
+                    adapter_ref=adapter, pruner=pruner_obj,
                 )
                 summary = runner.run_episode(seed + i, episode_id=f"{game}-{seed + i}")
                 wins += summary["outcome"] == "win"
@@ -167,6 +179,8 @@ def evolve(
     episodes: int = typer.Option(None, help="Override episodes per generation"),
     train_strategy: str = typer.Option(None, help="grpo | reject_sft (default: tier's)"),
     hf_repo: str = typer.Option(None, help="Push each generation's datasets to this HF dataset repo"),
+    pruner: bool = typer.Option(False, "--pruner/--no-pruner", help="Teacher menu pruning during rollout (HYBRID_RL.md)"),
+    warm_start: bool = typer.Option(False, "--warm-start", help="Gen 1 = teacher rollout distilled via reject_sft"),
 ) -> None:
     """Run the full self-improvement loop for N generations."""
     from slm_rl.config.loader import load_run_config
@@ -175,6 +189,7 @@ def evolve(
     overrides = {
         "run_id": run_id, "model": model, "backend": backend, "tier": tier,
         "train_strategy": train_strategy, "hf_dataset_repo": hf_repo,
+        "teacher": {"pruner": pruner} if pruner else None,
     }
     if episodes:
         overrides["train"] = {"episodes_per_generation": episodes}
@@ -182,7 +197,18 @@ def evolve(
     runner = GenerationRunner(cfg)
     runner.ensure_baseline()
     start = runner.registry.next_generation
-    for g in range(start, start + generations):
+    end = start + generations
+    if warm_start:
+        if start == 1:
+            m = runner.run_generation(1, teacher=True)
+            typer.echo(
+                f"gen 1 (teacher warm-start): primary={m['eval']['primary']:.3f} "
+                f"promoted={m['gate']['promoted']} ({m['gate']['reason']})"
+            )
+            start = runner.registry.next_generation
+        else:
+            typer.echo(f"warm-start skipped: run already at gen {start}")
+    for g in range(start, end):
         m = runner.run_generation(g)
         typer.echo(
             f"gen {g}: primary={m['eval']['primary']:.3f} "
@@ -223,6 +249,7 @@ def eval_cmd(
     backend: str = typer.Option(None),
     tier: str = typer.Option(None),
     adapter: str = typer.Option(None, help="LoRA adapter path (llm agent)"),
+    pruner: bool = typer.Option(False, "--pruner/--no-pruner", help="Teacher menu pruning (side metric only — never the gate)"),
 ) -> None:
     """Run the frozen eval suite for a game."""
     from slm_rl.agents.bots import RandomAgent
@@ -242,8 +269,17 @@ def eval_cmd(
     else:
         make_agent = RandomAgent
 
+    pruner_obj = None
+    if pruner:
+        from slm_rl.teachers import make_pruner
+
+        pruner_obj = make_pruner(game_cfg)
+
     try:
-        metrics = run_suite(game_cls.eval_suite(), make_agent, game_cls, game_cfg, limit=limit)
+        metrics = run_suite(
+            game_cls.eval_suite(), make_agent, game_cls, game_cfg,
+            limit=limit, pruner=pruner_obj,
+        )
     finally:
         if backend_obj:
             backend_obj.close()

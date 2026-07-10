@@ -20,6 +20,29 @@ MENU_LIMIT = 30  # above this, show a format instruction instead of a menu
 _ACTION_RE = re.compile(r"ACTION:\s*([^\n]+)", re.IGNORECASE)
 
 
+def action_instruction(obs: Observation) -> str:
+    legal = obs.legal_actions
+    if len(legal) <= MENU_LIMIT:
+        menu = "\n".join(f"{i + 1}) {a.label}" for i, a in enumerate(legal))
+        return f"Legal moves:\n{menu}\nAnswer with the move's number or name."
+    fmt = obs.metadata.get("action_format", "one of the legal moves")
+    return f"Your move must be {fmt} ({len(legal)} legal moves)."
+
+
+def build_messages(system_prompt: str, obs: Observation) -> list[dict]:
+    """The exact chat messages an LLMAgent would see. Module-level so teacher
+    agents can stamp LLM-identical prompts into their records (required for
+    the reject_sft warm-start distillation to transfer)."""
+    user = obs.text + "\n\n" + action_instruction(obs)
+    if nudge := obs.metadata.get("nudge"):
+        user += f"\n\nIMPORTANT: {nudge}"
+    user += "\nThink briefly if needed, then end with one line: ACTION: <your move>"
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user},
+    ]
+
+
 class LLMAgent(Agent):
     def __init__(
         self,
@@ -60,22 +83,10 @@ class LLMAgent(Agent):
         return ActionDecision(fallback, out2.text, retry_messages, "fallback_random")
 
     def _build_messages(self, obs: Observation) -> list[dict]:
-        user = obs.text + "\n\n" + self._action_instruction(obs)
-        if nudge := obs.metadata.get("nudge"):
-            user += f"\n\nIMPORTANT: {nudge}"
-        user += "\nThink briefly if needed, then end with one line: ACTION: <your move>"
-        return [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": user},
-        ]
+        return build_messages(self.system_prompt, obs)
 
     def _action_instruction(self, obs: Observation) -> str:
-        legal = obs.legal_actions
-        if len(legal) <= MENU_LIMIT:
-            menu = "\n".join(f"{i + 1}) {a.label}" for i, a in enumerate(legal))
-            return f"Legal moves:\n{menu}\nAnswer with the move's number or name."
-        fmt = obs.metadata.get("action_format", "one of the legal moves")
-        return f"Your move must be {fmt} ({len(legal)} legal moves)."
+        return action_instruction(obs)
 
 
 def extract_action_token(text: str) -> str | None:

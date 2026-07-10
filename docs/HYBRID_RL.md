@@ -93,14 +93,20 @@ rather than hoping training gets it there. That matters most for the 350M:
 
 ## Build order
 
-1. **Mastermind exact solver as teacher** (~30 lines, no DQN training):
-   consistency filtering is exact for this game. Validates the whole
-   teacher-as-Agent → warm-start → GRPO pipeline immediately, and doubles as
-   the menu pruner (propose only feedback-consistent, unplayed codes).
+1. **Mastermind exact solver as teacher** — ✅ landed (Jul 2026):
+   `slm_rl/teachers/` ships `SolverAgent` + `ConsistentMenuPruner`;
+   `evolve --warm-start --pruner` wires seams 1+2, and seam 3 landed as the
+   exact elimination reward in GRPO (Φ(s) = −log|consistent(s)|), replacing
+   the consistency fraction — which measurably rewarded repeated guesses at
+   (k−1)/k and zero-std'd under pruned menus. Implementation decisions in
+   DECISIONS.md D11. Smoke proof of the steering thesis: a *random* policy
+   under the pruner wins ~100% of games — selection over generation.
 2. **`teachers/dqn.py`** (CleanRL `dqn.py` pattern, MLP over `vector_obs()`)
    when Freeway lands (Phase 3) — Atari is where a learned teacher earns its
    keep. Blackjack's basic-strategy table is another exact-teacher case.
-3. **Shaping term** in GRPO rewards once teacher Q-values exist on disk.
+3. **Learned shaping term** (teacher V(s) stamped into `game_ctx`) once DQN
+   teacher Q-values exist on disk — the Mastermind elimination reward is this
+   seam's exact special case.
 
 Honest framing: a DQN will flatly beat our SLMs at Atari scores. That's fine —
 the product is a language-native reasoning agent and its dataset; classical

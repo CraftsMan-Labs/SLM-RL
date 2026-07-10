@@ -85,3 +85,30 @@ CleanRL (MIT) is a pattern reference (single-file, torch+Gymnasium), not a
 dependency.
 **Revisit if**: teacher-distilled policies cap the LLM's ceiling (imitation
 lock-in) — then reduce teacher mixing per generation rather than dropping it.
+
+Implementation notes (Mastermind, Jul 2026):
+
+- **Pruning happens in the EpisodeRunner**, not in an Agent wrapper — records
+  persist the runner's observation, so runner-level pruning gives SFT/GRPO
+  exports the pruned menu for free. Pruned episodes alternate with
+  format-mode episodes (`teacher.pruner_fraction`) because the gate eval is
+  format-mode: training only on menus would create a train/eval mismatch.
+- **Warm-start is just generation 1** (`evolve --warm-start`): the solver
+  plays rollout (no inference backend), strategy is forced to `reject_sft`,
+  and the normal dataset→train→eval→gate path runs. Idempotent on resume.
+  Teachers stamp `model_id="teacher:..."` and build LLM-identical prompts
+  via `build_messages` — without those the SFT export would yield 0 pairs.
+- **The GRPO consistency reward was replaced by an elimination reward**
+  (seam 3 realized exactly: Φ(s) = −log|consistent(s)|). Two measured defects
+  forced this: a repeated wrong guess scored (k−1)/k under the consistency
+  fraction (near-max — the reward *fed* the repeat doom loop, now −1.0), and
+  under a pruned menu every option is consistent, so group reward std hit
+  zero (dead gradient). Elimination varies per option even on all-consistent
+  menus and on turn 0.
+- **Auto-remediation no longer escalates entropy_bonus** — one doubling
+  (0.01→0.02) measurably sent train entropy to 7.82 (random play). LR still
+  halves (floored at 1e-6) and both knobs reset on the next promotion.
+- **Dual eval**: the gate eval never sees the pruner; `metrics.eval_pruned`
+  (small with-pruner suite) is the product metric, recorded only. On
+  Mastermind the exact pruner saturates it (even a random policy wins ~100%
+  under consistent-candidate menus) — the honest signal stays the gate.

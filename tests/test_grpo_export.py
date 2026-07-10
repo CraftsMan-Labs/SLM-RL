@@ -74,3 +74,18 @@ def test_cap_prefers_later_turns(tmp_path, monkeypatch):
 def test_non_mastermind_rejected(tmp_path):
     with pytest.raises(NotImplementedError):
         export_grpo_dataset(tmp_path, tmp_path / "g.jsonl", GameConfig(name="connect4"))
+
+
+def test_menu_stamped_only_for_pruned_prompts(tmp_path):
+    pruned = rec("e1", 0, 1, "RRRR", "pruned prompt")
+    pruned["legal_actions"] = ["GGGG", "RRRR", "YYBB"]  # <= MENU_LIMIT
+    full = rec("e2", 0, 2, "GGGG", "format prompt")
+    full["legal_actions"] = [f"A{i:04d}" for i in range(40)]  # > MENU_LIMIT
+    out = tmp_path / "g.jsonl"
+    assert export_grpo_dataset(write_jsonl(tmp_path, [pruned, full]), out, GAME_CFG) == 2
+
+    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    by_menu = [json.loads(r["game_ctx"]).get("menu") for r in rows]
+    assert sorted(x is not None for x in by_menu) == [False, True]
+    menu = next(x for x in by_menu if x is not None)
+    assert menu == ["GGGG", "RRRR", "YYBB"]  # rollout order preserved (1-indexed by rewards)

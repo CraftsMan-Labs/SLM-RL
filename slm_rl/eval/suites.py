@@ -27,9 +27,12 @@ def run_suite(
     game_cls: type[Game],
     game_cfg: GameConfig,
     limit: int | None = None,
+    pruner=None,
 ) -> dict:
     """Plays the suite (fresh game+agent per seed); returns gate-comparable
-    metrics. `limit` caps episodes for smoke tests."""
+    metrics. `limit` caps episodes for smoke tests. `pruner` is for the
+    side eval_pruned metric ONLY — the gate eval never passes it (teachers
+    must not inflate measured skill)."""
     from slm_rl.rollout.runner import EpisodeRunner
 
     seeds = suite.seeds[:limit] if limit else suite.seeds
@@ -37,7 +40,7 @@ def run_suite(
     scores: list[float] = []
 
     for seed in seeds:
-        runner = EpisodeRunner(game_cls(game_cfg), make_agent(), game_cfg)
+        runner = EpisodeRunner(game_cls(game_cfg), make_agent(), game_cfg, pruner=pruner)
         summary = runner.run_episode(seed, episode_id=f"eval-{seed}")
         wins += summary["outcome"] == "win"
         scores.append(summary["cum_reward"])

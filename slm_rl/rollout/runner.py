@@ -31,6 +31,7 @@ class EpisodeRunner:
         model_id: str = "none",
         adapter_ref: str | None = None,
         opponent_id: str | None = None,
+        pruner=None,
     ):
         self.game = game
         self.agent = agent
@@ -41,6 +42,7 @@ class EpisodeRunner:
         self.model_id = model_id
         self.adapter_ref = adapter_ref
         self.opponent_id = opponent_id
+        self.pruner = pruner  # teacher menu pruning (HYBRID_RL.md seam 2)
 
     def run_episode(self, seed: int, episode_id: str) -> dict:
         obs = self.game.reset(seed)
@@ -52,6 +54,8 @@ class EpisodeRunner:
         outcome: str | None = None
 
         while True:
+            if self.pruner is not None:
+                obs = self.pruner.prune(obs, seed)
             decision = self.agent.act(obs, history)
             history.append(decision)
             result = self.game.step(decision.action)
