@@ -71,6 +71,26 @@ game engine (pure Python, + vector_obs() hook)
    still means *the language model* got better. Side dividend: teacher
    win-rate per game config is an automatic difficulty/curriculum signal.
 
+## Why this rescues the smallest tier (350M)
+
+The hybrid seams are *steering*: they constrain where the policy can go
+rather than hoping training gets it there. That matters most for the 350M:
+
+- The 350M runs (Jul 2026) showed it **can** be steered — GRPO drove invalid
+  output from 34% to 0% — but it cannot *deduce* over 1296 free-form codes.
+  Menu pruning re-frames the task from generation to selection (D3's sweet
+  spot): choose among ~10 teacher-vetted candidates. Format becomes trivial,
+  repeats become impossible (never proposed), and the residual learning
+  problem — rank candidates using the feedback text — is 350M-sized.
+- On the **8GB tier**, `reject_sft`'s documented weakness is that it only
+  reinforces behaviors the model already samples. Teacher trajectories patch
+  exactly that hole: expert iteration with a real expert, no GRPO/CUDA
+  required. The teacher itself is tiny (an exact solver, or a <10MB MLP), so
+  the 8GB budget is untouched.
+- Report both numbers: eval **with** the pruner (product metric — the shipped
+  agent includes its teacher) and **without** (pure-LLM skill, the gate
+  metric). Steering must never be counted as model improvement.
+
 ## Build order
 
 1. **Mastermind exact solver as teacher** (~30 lines, no DQN training):
