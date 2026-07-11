@@ -309,6 +309,25 @@ def dashboard() -> None:
     _todo("Phase 4")
 
 
+@app.command()
+def watch(
+    run: str = typer.Option(..., help="Run id under runs/"),
+    home: str = typer.Option("./runs"),
+    port: int = typer.Option(8777),
+    host: str = typer.Option("127.0.0.1"),
+) -> None:
+    """Stream a run's episodes live to a browser (read-only observer)."""
+    from slm_rl.orchestrator.paths import RunPaths
+    from slm_rl.webui.server import serve
+
+    paths = RunPaths(home, run)
+    if not paths.root.exists():
+        typer.secho(f"no run at {paths.root}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    typer.echo(f"watching {paths.root} -> http://{host}:{port}/")
+    serve(paths.root, host=host, port=port)
+
+
 @app.command("new-game")
 def new_game(name: str = typer.Argument(...)) -> None:
     """Scaffold a new game plugin."""

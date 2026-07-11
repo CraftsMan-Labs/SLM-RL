@@ -67,6 +67,21 @@ datasets/                      cross-run consolidated parquet (the data product)
 
 Adapters stay unmerged; `slm-rl export --gen N --merge [--gguf]` produces merged/quantized artifacts for Mac play.
 
+## Live-play viewer (`slm-rl watch`)
+
+`slm_rl/webui/` is a browser view of a run in progress: `slm-rl watch --run
+<id>` tails `runs/<run_id>/generations/gen_*/rollouts/*.jsonl` (the same
+`RolloutRecord` stream datagen already writes) and pushes each decision to
+the browser over Server-Sent Events as colored-peg episode cards — guess,
+reward, parse status, monitor flags, and the raw completion. It is a pure
+*tail, parse, push* layer: no hooks into the runner, no writes into `runs/`
+(CODING_GUIDELINE invariant 5 — read-only observers stay read-only), and no
+new dependency of any kind. Like core `slm_rl`, it is stdlib-only
+(`http.server`, `json`, `threading`) so it holds on the 8GB tier with none
+of the optional extras installed; it is a different surface from the
+Streamlit `[dashboard]` metrics stub in `slm_rl/dashboard/`, which stays a
+separate, heavier, cross-generation curve viewer.
+
 ## Anti-doom-loop design (two levels)
 
 **Rollout level — `DoomLoopMonitor`** (`rollout/monitor.py`), per step:
