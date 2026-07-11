@@ -86,6 +86,9 @@ class TrainConfig(BaseModel):
     replay_generations: int = 3
     win_turn_cap: int = 0  # drop wins longer than this many steps; 0 = disabled
     sft_win_final_dup: int = 1  # write a win's final decision pair this many times; 1 = disabled
+    # K episodes per generate() call (transformers/vLLM only; llama.cpp/MLX
+    # keep this at 1). 1 = current behavior (serial EpisodeRunner).
+    rollout_batch_size: int = 1
 
 
 class TeacherConfig(BaseModel):

@@ -236,6 +236,45 @@ def test_no_eval_pruned_without_pruner(tmp_path, monkeypatch):
     assert "eval_pruned" not in m
 
 
+def test_rollout_batch_size_routes_through_batch_runner(tmp_path, monkeypatch):
+    # plan 005: rollout_batch_size > 1 on a batching-eligible backend
+    # (transformers, the tier this test resolves to) must go through
+    # BatchedEpisodeRunner and still write one rollout record per episode
+    # per turn, for exactly `episodes_per_generation` episodes (5 episodes,
+    # batch of 2 -> ragged final chunk of 1; same generate() contract as the
+    # serial path, just batched).
+    class BatchAwareFakeBackend(FakeBackend):
+        """Unlike FakeBackend, returns one output per input chat -- the
+        contract BatchedEpisodeRunner (and any real batching backend)
+        relies on."""
+
+        def generate(self, chats, params: GenParams):
+            self._n += 1
+            return [GenOutput(text="ACTION: 1") for _ in chats]
+
+    import slm_rl.orchestrator.generation as gen
+
+    runner = make_runner(
+        tmp_path, monkeypatch, champ_primary=0.10, cand_primary=0.40,
+        train_overrides={"episodes_per_generation": 5, "rollout_batch_size": 2},
+    )
+    monkeypatch.setattr(gen, "create_backend", lambda *a, **k: BatchAwareFakeBackend(0.0))
+    assert runner.backend_name == "transformers"  # sanity: batching-eligible tier
+
+    runner.ensure_baseline()
+    m = runner.run_generation(1)
+
+    assert m["rollout"]["episodes"] == 5
+    rollout_text = next(runner.paths.rollouts(1).glob("*.jsonl")).read_text()
+    lines = rollout_text.strip().splitlines()
+    episode_ids = {json.loads(line)["episode_id"] for line in lines}
+    assert len(episode_ids) == 5  # every episode wrote at least one record
+    # "ACTION: 1" (RRRR) never matches a random secret -> every episode runs
+    # to the turn cap and ends in loss/truncated, never a crash mid-batch
+    outcomes = {json.loads(line)["outcome"] for line in lines if json.loads(line)["outcome"]}
+    assert outcomes <= {"loss", "truncated"}
+
+
 def test_replay_window_feeds_trainer(tmp_path, monkeypatch):
     import pyarrow.parquet as pq
 

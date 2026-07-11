@@ -75,6 +75,13 @@ class GenerationRunner:
         params = GenParams(max_tokens=self.cfg.train.max_completion_tokens, temperature=temperature)
         return LLMAgent(backend, self.game_cls(self.game_cfg).system_prompt(), gen_params=params)
 
+    def _batch_size(self) -> int:
+        # batching is transformers/vLLM only (plan 005); llama.cpp/MLX (the
+        # 8GB default) always stay serial regardless of the configured knob.
+        if self.backend_name not in ("transformers", "transformers-4bit", "vllm"):
+            return 1
+        return self.cfg.train.rollout_batch_size
+
     def _eval(self, adapter: Path | None, limit: int | None = None, pruner=None) -> dict:
         # pruner is ONLY for the eval_pruned side metric; the gate eval never
         # passes it (steering must not be counted as model improvement)
@@ -84,6 +91,8 @@ class GenerationRunner:
             return run_suite(
                 self.suite, lambda: agent, self.game_cls, self.game_cfg,
                 limit=limit, pruner=pruner,
+                batch_size=self._batch_size(), backend=backend,
+                system_prompt=agent.system_prompt, gen_params=agent.params,
             )
         finally:
             backend.close()
@@ -133,17 +142,40 @@ class GenerationRunner:
         # prompts must both appear (the gate eval is format-mode)
         pruned_lot = round(self.cfg.teacher.pruner_fraction * 10)
         wins = 0
+        rollout_batch_size = 1 if teacher else self._batch_size()  # teachers are engine-speed; never batch
+        seeds = [self.cfg.seed + generation * n + i for i in range(n)]  # disjoint from eval seeds (>=10000)
+        pruners = [self.pruner if self.pruner and i % 10 < pruned_lot else None for i in range(n)]
         with RolloutWriter(rollouts) as writer:
-            for i in range(n):
-                seed = self.cfg.seed + generation * n + i  # disjoint from eval seeds (>=10000)
-                runner = EpisodeRunner(
-                    self.game_cls(self.game_cfg), agent, self.game_cfg, writer=writer,
-                    run_id=self.cfg.run_id, generation=generation, model_id=model_id,
-                    adapter_ref=str(champ_adapter) if champ_adapter else None,
-                    pruner=self.pruner if self.pruner and i % 10 < pruned_lot else None,
-                )
-                summary = runner.run_episode(seed, episode_id=f"g{generation}-{seed}")
-                wins += summary["outcome"] == "win"
+            if rollout_batch_size > 1:
+                from slm_rl.rollout.batch_runner import BatchedEpisodeRunner
+
+                for start in range(0, n, rollout_batch_size):
+                    chunk = range(start, min(start + rollout_batch_size, n))
+                    runner = BatchedEpisodeRunner(
+                        games=[self.game_cls(self.game_cfg) for _ in chunk],
+                        seeds=[seeds[i] for i in chunk],
+                        episode_ids=[f"g{generation}-{seeds[i]}" for i in chunk],
+                        game_cfg=self.game_cfg,
+                        backend=backend,
+                        system_prompt=agent.system_prompt,
+                        gen_params=agent.params,
+                        writer=writer,
+                        run_id=self.cfg.run_id, generation=generation, model_id=model_id,
+                        adapter_ref=str(champ_adapter) if champ_adapter else None,
+                        pruners=[pruners[i] for i in chunk],
+                    )
+                    for summary in runner.run():
+                        wins += summary["outcome"] == "win"
+            else:
+                for i in range(n):
+                    runner = EpisodeRunner(
+                        self.game_cls(self.game_cfg), agent, self.game_cfg, writer=writer,
+                        run_id=self.cfg.run_id, generation=generation, model_id=model_id,
+                        adapter_ref=str(champ_adapter) if champ_adapter else None,
+                        pruner=pruners[i],
+                    )
+                    summary = runner.run_episode(seeds[i], episode_id=f"g{generation}-{seeds[i]}")
+                    wins += summary["outcome"] == "win"
         if backend is not None:
             backend.close()  # 2. free GPU before training
 
