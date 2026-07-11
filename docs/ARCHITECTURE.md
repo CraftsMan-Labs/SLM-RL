@@ -82,6 +82,17 @@ of the optional extras installed; it is a different surface from the
 Streamlit `[dashboard]` metrics stub in `slm_rl/dashboard/`, which stays a
 separate, heavier, cross-generation curve viewer.
 
+For Atari games, each episode card also gets a "▶ watch" button (plan 010)
+that streams the actual game screen from `GET /frames?episode=<id>`. No
+frames are recorded during rollout — plan 008 established that ALE with
+`repeat_action_probability=0.0` is byte-deterministic given a seed and
+action script, and every record already carries `(seed, parsed_action)` per
+step, so `slm_rl/webui/replay.py` re-simulates the episode in a fresh env
+and renders real frames on demand (a minimal stdlib PNG encoder,
+`slm_rl/webui/png.py`, avoids a Pillow dependency). This stays a read-only
+observer: replay never touches the rollout/training path, and non-Atari
+games (Mastermind) get a 501 by design.
+
 ## Anti-doom-loop design (two levels)
 
 **Rollout level — `DoomLoopMonitor`** (`rollout/monitor.py`), per step:

@@ -120,6 +120,59 @@ PAGE: str = """<!doctype html>
   .outcome { font-weight: 600; }
   .outcome.win { color: var(--ok); }
   .outcome.loss { color: var(--bad); }
+  .watch-btn {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: #23262d;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .watch-btn:hover { background: #2c313a; }
+  #screen-panel {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem;
+    display: none;
+    z-index: 10;
+  }
+  #screen-panel.open { display: block; }
+  #screen-panel .screen-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  #screen-panel img {
+    display: block;
+    width: 320px;
+    height: 240px;
+    image-rendering: pixelated;
+    background: #000;
+    border-radius: 4px;
+  }
+  #screen-close {
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  #screen-close:hover { color: var(--text); }
+  #screen-msg {
+    font-size: 0.75rem;
+    color: var(--warn);
+    margin-top: 0.3rem;
+    max-width: 320px;
+  }
 </style>
 </head>
 <body>
@@ -132,6 +185,14 @@ PAGE: str = """<!doctype html>
   <span id="conn" class="connecting">connecting…</span>
 </header>
 <div id="episodes"></div>
+<div id="screen-panel">
+  <div class="screen-head">
+    <span id="screen-title">episode</span>
+    <button id="screen-close" title="stop watching">close ✕</button>
+  </div>
+  <img id="screen-img" alt="game screen">
+  <div id="screen-msg"></div>
+</div>
 <script>
 (function () {
   "use strict";
@@ -170,10 +231,16 @@ PAGE: str = """<!doctype html>
     el.innerHTML = `
       <div class="card-head">
         <span>episode ${ev.episode_id ?? "?"} · gen ${ev.generation ?? "?"} · model ${ev.model_id ?? "?"} · seed ${ev.seed ?? "?"}</span>
-        <span class="card-outcome"></span>
+        <span class="row">
+          <button class="watch-btn" type="button">▶ watch</button>
+          <span class="card-outcome"></span>
+        </span>
       </div>
       <div class="steps"></div>
     `;
+    el.querySelector(".watch-btn").addEventListener("click", () => {
+      openScreen(ev.episode_id);
+    });
     episodesEl.insertBefore(el, episodesEl.firstChild);
     entry = { el, stepsEl: el.querySelector(".steps"), outcomeEl: el.querySelector(".card-outcome") };
     cards.set(ev.episode_id, entry);
@@ -250,6 +317,36 @@ PAGE: str = """<!doctype html>
 
   const params = new URLSearchParams(window.location.search);
   statRun.textContent = `run: ${params.get("run") || "—"}`;
+
+  // Live game screen (plan 010): the panel's <img> points at /frames?episode=,
+  // a multipart/x-mixed-replace stream of re-simulated PNG frames — no JS
+  // image decoding needed, the browser paints each part as it arrives.
+  // Clearing `src` is what ends the stream server-side (client disconnect
+  // -> the server's stop event fires -> the replay env is closed).
+  const screenPanel = document.getElementById("screen-panel");
+  const screenImg = document.getElementById("screen-img");
+  const screenTitle = document.getElementById("screen-title");
+  const screenMsg = document.getElementById("screen-msg");
+  const screenClose = document.getElementById("screen-close");
+
+  function openScreen(episodeId) {
+    screenTitle.textContent = `episode ${episodeId}`;
+    screenMsg.textContent = "";
+    screenPanel.classList.add("open");
+    screenImg.onerror = () => {
+      screenMsg.textContent =
+        "no live screen for this episode (non-Atari game, or the atari extra isn't installed)";
+    };
+    screenImg.src = `/frames?episode=${encodeURIComponent(episodeId)}`;
+  }
+
+  function closeScreen() {
+    screenPanel.classList.remove("open");
+    screenImg.onerror = null;
+    screenImg.src = "";
+  }
+
+  screenClose.addEventListener("click", closeScreen);
 
   function connect() {
     connEl.className = "connecting";
