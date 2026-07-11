@@ -1,7 +1,7 @@
 # First ALE game (plan 008). Score game: gate compares mean_score, not
 # win_rate. Atari legitimately repeats actions (hold LEFT, spam FIRE), so
 # the doom-loop thresholds are much looser than board games'.
-max_turns: 400           # Safety bound, not a gameplay cap: episodes end at game
+max_turns: 2000          # Deep headroom, not a cap: 12/1000 teacher episodes (its BEST, 610-695 pts) hit the old 400 bound (measured 2026-07-11). Weak play still exits early via death or the 240-decision stagnation guard.
                          # over (all lives lost) or monitor stagnation truncation.
                          # Measured 2026-07-11 (15 teacher episodes, stagnation
                          # monitor disabled): uncapped natural death range is
