@@ -52,14 +52,14 @@ def test_export_grpo_dataset_accepts_mastermind_easy(tmp_path: Path):
 
     records = [
         {
-            "episode_id": "e1", "step_idx": 0, "seed": seed, "parsed_action": "RRR",
+            "episode_id": "e1", "step_idx": 0, "seed": seed, "generation": 1, "parsed_action": "RRR",
             "prompt_messages": [
                 {"role": "system", "content": "s"},
                 {"role": "user", "content": "turn 0"},
             ],
         },
         {
-            "episode_id": "e1", "step_idx": 1, "seed": seed, "parsed_action": "GGG",
+            "episode_id": "e1", "step_idx": 1, "seed": seed, "generation": 1, "parsed_action": "GGG",
             "prompt_messages": [
                 {"role": "system", "content": "s"},
                 {"role": "user", "content": "turn 1"},
