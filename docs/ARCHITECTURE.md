@@ -2,6 +2,9 @@
 
 A self-improving game gymnasium for small language models: play → dataset → fine-tune → eval gate → promote → play again.
 
+> Visual walkthrough: [PIPELINE.md](PIPELINE.md) — the 0→1 generation
+> pipeline as a Mermaid diagram, with the hard-won rules encoded in it.
+
 ## The generation loop
 
 The system is organized around a **generation loop** run by the orchestrator (`slm_rl/orchestrator/generation.py`). One *generation* = one full cycle:
