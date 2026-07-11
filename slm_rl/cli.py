@@ -181,6 +181,10 @@ def evolve(
         None,
         help="Override train.rollout_batch_size (K episodes per generate call; transformers/vLLM only)",
     ),
+    selection_quantile: float = typer.Option(
+        None,
+        help="Override train.selection_quantile (keep top fraction of episodes by return for SFT)",
+    ),
     train_strategy: str = typer.Option(None, help="grpo | reject_sft (default: tier's)"),
     hf_repo: str = typer.Option(None, help="Push each generation's datasets to this HF dataset repo"),
     pruner: bool = typer.Option(False, "--pruner/--no-pruner", help="Teacher menu pruning during rollout (HYBRID_RL.md)"),
@@ -200,6 +204,8 @@ def evolve(
         train_overrides["episodes_per_generation"] = episodes
     if rollout_batch_size:
         train_overrides["rollout_batch_size"] = rollout_batch_size
+    if selection_quantile:
+        train_overrides["selection_quantile"] = selection_quantile
     if train_overrides:
         overrides["train"] = train_overrides
     cfg = load_run_config(game=game, overrides=overrides)

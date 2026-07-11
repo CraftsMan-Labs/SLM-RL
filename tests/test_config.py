@@ -43,6 +43,16 @@ def test_rollout_batch_size_omitted_keeps_default():
     assert cfg.train.rollout_batch_size == 1  # current behavior unchanged
 
 
+def test_selection_quantile_override_lands_in_train_config():
+    cfg = load_run_config(game="mastermind", overrides={"train": {"selection_quantile": 0.5}})
+    assert cfg.train.selection_quantile == 0.5
+
+
+def test_selection_quantile_omitted_keeps_default():
+    cfg = load_run_config(game="mastermind")
+    assert cfg.train.selection_quantile == 0.25  # current behavior unchanged
+
+
 def test_every_shipped_game_config_parses():
     for path in (CONFIG_DIR / "games").glob("*.yaml"):
         cfg = load_game_config(path.stem)

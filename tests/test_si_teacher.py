@@ -53,9 +53,17 @@ def _run_episodes(agent: Agent, seeds) -> tuple[list[float], list[tuple[str, ...
 
 
 def test_teacher_beats_random_with_exploration():
-    # Exploration ON (EXPLORE_EPS is baked in): mean over 20 episodes must
-    # still be >= 2x the random baseline over the same seeds. Calibrated
-    # (agent seed 0, seeds 0-19): teacher 2.8083 vs random 1.1167 (2.51x).
+    # Exploration ON (EXPLORE_EPS is baked in): the teacher must clearly
+    # beat the random baseline over the same seeds. Originally calibrated
+    # at max_turns=80: teacher 2.8083 vs random 1.1167 (2.51x), asserted
+    # >= 2x (~80% of measured). At natural episode length (max_turns=400,
+    # stagnation window 240) BOTH agents run to game over, and random
+    # benefits relatively more (it fires often enough to keep resetting
+    # the stagnation counter, and long episodes give lucky hits time to
+    # accumulate): recalibrated 2026-07-11 (agent seed 0, seeds 0-19) --
+    # teacher 7.1833 vs random 3.8167 (1.88x). Same ~80%-of-measured
+    # margin convention: assert >= 1.5x. The old 2x contrast was partly an
+    # artifact of the window-40 monitor ejecting random players early.
     seeds = list(range(20))
     agent, _ = make_teacher(CFG, seed=0)
     teacher_rewards, _ = _run_episodes(agent, seeds)
@@ -63,9 +71,9 @@ def test_teacher_beats_random_with_exploration():
     teacher_mean = sum(teacher_rewards) / len(teacher_rewards)
     random_mean = sum(random_rewards) / len(random_rewards)
     # random_mean can be non-positive (life loss penalties dominate); guard
-    # the comparison so a >=2x claim is always meaningful.
-    assert random_mean > 0, "random baseline must be positive for a 2x claim to mean anything"
-    assert teacher_mean >= 2 * random_mean
+    # the comparison so a >=1.5x claim is always meaningful.
+    assert random_mean > 0, "random baseline must be positive for a 1.5x claim to mean anything"
+    assert teacher_mean >= 1.5 * random_mean
 
 
 def test_episode_diversity_across_consecutive_episodes():
@@ -180,14 +188,25 @@ def test_teacher_records_feed_sft_export(tmp_path: Path):
 
 def test_monitor_tolerance_no_repetition_flags():
     # The plan-009 concern: the heuristic legitimately repeats movement
-    # actions (hold a direction, spam fire), and the 008 thresholds must
-    # accommodate that -- so NO repetition-type signal may ever fire.
-    # reward_stagnation is a different phenomenon: an unlucky exploration
-    # episode can legitimately go reward_stagnation_window (40) decisions
-    # without scoring and get reflected+truncated (measured: 1 of 10
-    # episodes at eps=0.05, agent seed 0 -- see executor report; per plan
-    # instructions the yaml is NOT retuned). Assert repetition-cleanliness
-    # strictly and stagnation-truncation rarity loosely.
+    # actions (hold a direction, camp with FIRE), so NO repetition-type
+    # signal may ever fire. At natural episode length (max_turns=400,
+    # episodes end at game over rather than an 80-decision cap) competent
+    # play produces long repeats AND long scoreless dry spells -- measured
+    # 2026-07-11 (agent seeds 0+1 x env seeds 0-19, monitor bypassed): max
+    # identical-action streak 44, max trailing 2-gram repeats 22, max
+    # scoreless-decision streak 120 -- and the yaml thresholds (88/44/240)
+    # are all calibrated to 2x those maxima, so a competent episode must
+    # stay fully monitor-clean. This matters beyond hygiene: a single
+    # reflect marks the whole episode dirty in sft_export.select_episodes
+    # (dirty() excludes on ANY intervention), silently discarding the best
+    # warm-start demonstrations. Measured 2026-07-11 at the calibrated
+    # thresholds (deterministic: seeded agent + env, env seeds 0-9): 10 of
+    # 10 episodes clean, zero signals, all ending at natural game over
+    # (scores 120-515). Assert >= 9, the same 1-episode margin the
+    # original used (measured 9, asserted >= 8); anything that fires
+    # within that margin must be the stagnation guard -- the only
+    # legitimate ejector (of never-scoring players) -- never a
+    # repetition signal.
     agent, _ = make_teacher(CFG, seed=0)
     clean = 0
     for seed in range(10):
@@ -198,6 +217,8 @@ def test_monitor_tolerance_no_repetition_flags():
         assert signals.get("action_repeat", 0) == 0
         assert signals.get("ngram_loop", 0) == 0
         assert signals.get("state_revisit", 0) == 0
+        # anything that does fire must be the stagnation guard, nothing else
+        assert set(signals) <= {"reward_stagnation"}
         if summary["monitor"]["interventions"] == 0:
             clean += 1
-    assert clean >= 8
+    assert clean >= 9
