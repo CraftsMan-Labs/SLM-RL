@@ -72,3 +72,5 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 |------|-------|----------|--------|------------|--------|
 | 008 | Space Invaders via Gymnasium/ALE (RAM -> text) | P1 | L | — | DONE |
 | 009 | Heuristic Space Invaders teacher + warm start | P1 | M | 008 | TODO |
+| 010 | Live game screen (deterministic frame replay in webui) | P1 | M | 007, 008 | TODO |
+| 011 | Vision-model play: LFM2.5-VL-450M reads frames | P1 | L | 008, 010 | PLANNED-NEXT (not yet written) |
