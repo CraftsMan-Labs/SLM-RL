@@ -33,6 +33,16 @@ def test_cli_style_overrides_win():
     assert cfg.model is None  # None overrides are dropped, default kept
 
 
+def test_rollout_batch_size_override_lands_in_train_config():
+    cfg = load_run_config(game="mastermind", overrides={"train": {"rollout_batch_size": 4}})
+    assert cfg.train.rollout_batch_size == 4
+
+
+def test_rollout_batch_size_omitted_keeps_default():
+    cfg = load_run_config(game="mastermind")
+    assert cfg.train.rollout_batch_size == 1  # current behavior unchanged
+
+
 def test_every_shipped_game_config_parses():
     for path in (CONFIG_DIR / "games").glob("*.yaml"):
         cfg = load_game_config(path.stem)

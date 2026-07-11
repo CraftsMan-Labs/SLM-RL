@@ -177,6 +177,10 @@ def evolve(
     backend: str = typer.Option(None),
     tier: str = typer.Option(None),
     episodes: int = typer.Option(None, help="Override episodes per generation"),
+    rollout_batch_size: int = typer.Option(
+        None,
+        help="Override train.rollout_batch_size (K episodes per generate call; transformers/vLLM only)",
+    ),
     train_strategy: str = typer.Option(None, help="grpo | reject_sft (default: tier's)"),
     hf_repo: str = typer.Option(None, help="Push each generation's datasets to this HF dataset repo"),
     pruner: bool = typer.Option(False, "--pruner/--no-pruner", help="Teacher menu pruning during rollout (HYBRID_RL.md)"),
@@ -191,8 +195,13 @@ def evolve(
         "train_strategy": train_strategy, "hf_dataset_repo": hf_repo,
         "teacher": {"pruner": pruner} if pruner else None,
     }
+    train_overrides = {}
     if episodes:
-        overrides["train"] = {"episodes_per_generation": episodes}
+        train_overrides["episodes_per_generation"] = episodes
+    if rollout_batch_size:
+        train_overrides["rollout_batch_size"] = rollout_batch_size
+    if train_overrides:
+        overrides["train"] = train_overrides
     cfg = load_run_config(game=game, overrides=overrides)
     runner = GenerationRunner(cfg)
     runner.ensure_baseline()
