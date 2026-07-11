@@ -131,6 +131,19 @@ def test_renderer_budget_and_content():
     assert "cannon" in obs.text
 
 
+def test_observation_metadata_carries_decoded_state():
+    # plan 009 Step 1: the renderer's decode(raw_obs) is duck-typed into
+    # metadata["state"] so non-LLM consumers (the heuristic teacher) can
+    # read named RAM variables without re-decoding.
+    game = get_game("space-invaders")(CFG)
+    obs = game.reset(seed=0)
+    state = obs.metadata["state"]
+    assert isinstance(state["player_x"], int)
+    assert isinstance(state["enemies_x"], int)
+    assert isinstance(state["invaders_left"], int)
+    assert isinstance(state["missile_in_flight"], bool)
+
+
 def test_vector_obs_length_and_range():
     game = get_game("space-invaders")(CFG)
     game.reset(seed=0)

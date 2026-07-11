@@ -24,8 +24,14 @@ _ACTION_LABELS = {
 class SpaceInvadersRenderer(ObservationRenderer):
     """RAM -> compact text (<= 12 lines, 8GB budget) + the 6 ALE actions."""
 
+    def decode(self, raw_obs) -> dict:
+        """Duck-typed hook (gym_adapter._observation): decoded RAM variables
+        for non-LLM consumers (the heuristic teacher, plan 009). Reused by
+        `render` below so RAM is decoded once per step, not twice."""
+        return ram_map.decode(raw_obs)
+
     def render(self, raw_obs, info: dict) -> tuple[str, list[ActionSpec]]:
-        decoded = ram_map.decode(raw_obs)
+        decoded = self.decode(raw_obs)
         lives = info.get("lives")
         score = int(info.get("score", 0))
         lines = [f"Score: {score}. Lives: {lives}."]

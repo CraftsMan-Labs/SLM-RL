@@ -16,6 +16,17 @@ def make_teacher(game_cfg: GameConfig, seed: int | None = None):
         g = get_game(game_cfg.name)(game_cfg)
         agent = SolverAgent(g.colors, g.code_length, g.allow_duplicates, g.system_prompt(), seed=seed)
         return agent, "teacher:mastermind_solver"
+    if game_cfg.name.startswith("space-invaders"):
+        # Lazy import: ale-py must not be imported unless this branch runs
+        # (CODING_GUIDELINE 8GB rule) -- get_game("space-invaders") pulls in
+        # the atari game module, which itself lazy-imports ale_py/gymnasium
+        # only inside GymnasiumGameAdapter._ensure_env.
+        from slm_rl.games.registry import get_game
+        from slm_rl.teachers.space_invaders_heuristic import HeuristicInvaderAgent
+
+        g = get_game(game_cfg.name)(game_cfg)
+        agent = HeuristicInvaderAgent(g.system_prompt(), seed=seed)
+        return agent, "teacher:space_invaders_heuristic"
     raise ValueError(f"No teacher implemented for game {game_cfg.name!r}")
 
 

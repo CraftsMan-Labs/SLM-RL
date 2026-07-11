@@ -116,6 +116,14 @@ rather than hoping training gets it there. That matters most for the 350M:
    (k−1)/k and zero-std'd under pruned menus. Implementation decisions in
    DECISIONS.md D11. Smoke proof of the steering thesis: a *random* policy
    under the pruner wins ~100% of games — selection over generation.
+1b. **Space Invaders heuristic teacher** — ✅ landed (plan 009, Jul 2026):
+   `teachers/space_invaders_heuristic.py`'s aim-and-fire `HeuristicInvaderAgent`
+   is the first *non-exact* teacher (no solver exists for Atari): greedy aim
+   scores 4.6x random over 20 calibration seeds, and 5% epsilon exploration
+   (still ≥2.5x random) keeps warm-start episodes diverse — greedy play on
+   this env is seed-invariant, so without it 1000 warm-start episodes would
+   be one episode 1000 times. `teachers/dqn.py` (below) remains the
+   principled upgrade path once it lands.
 2. **`teachers/dqn.py`** (CleanRL `dqn.py` pattern, MLP over `vector_obs()`)
    when Freeway lands (Phase 3) — Atari is where a learned teacher earns its
    keep. Blackjack's basic-strategy table is another exact-teacher case.

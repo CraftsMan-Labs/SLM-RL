@@ -154,13 +154,20 @@ class GymnasiumGameAdapter(Game):
         render_info = dict(self._info)
         render_info["score"] = self._score
         text, legal_actions = self.renderer.render(self._ram, render_info)
+        metadata: dict[str, Any] = {
+            "score": self._score,
+            "lives": self._lives,
+            "decision": self._turn,
+        }
+        # Optional protocol: a renderer may expose decode(raw_obs) -> dict
+        # for non-LLM consumers (the heuristic teacher, plan 009) without
+        # widening the ObservationRenderer ABC. Duck-typed via getattr so
+        # renderers without it (none yet) are unaffected.
+        if decode := getattr(self.renderer, "decode", None):
+            metadata["state"] = decode(self._ram)
         return Observation(
             text=text,
             legal_actions=legal_actions,
             turn=self._turn,
-            metadata={
-                "score": self._score,
-                "lives": self._lives,
-                "decision": self._turn,
-            },
+            metadata=metadata,
         )
