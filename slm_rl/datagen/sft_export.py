@@ -99,11 +99,15 @@ def export_sft_dataset(dataset_path: Path, out_path: Path, cfg: TrainConfig) -> 
                 prompt = rec["prompt_messages"][:2]  # clean system+user (drop retry turns)
                 if not prompt:
                     continue
+                # ponytail: teacher completions carry a verbalized rationale
+                # (plan 002) and are trusted verbatim; model-generated
+                # completions can contain retry junk, so those are still
+                # rebuilt from the canonical parsed_action.
+                is_teacher = str(rec.get("model_id", "")).startswith("teacher:")
+                content = rec["completion"] if is_teacher else f"ACTION: {rec['parsed_action']}"
                 row = {
                     "prompt": prompt,
-                    "completion": [
-                        {"role": "assistant", "content": f"ACTION: {rec['parsed_action']}"}
-                    ],
+                    "completion": [{"role": "assistant", "content": content}],
                 }
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
                 pairs += 1

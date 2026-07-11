@@ -7,13 +7,15 @@ from slm_rl.config.schema import TrainConfig
 from slm_rl.datagen.sft_export import export_sft_dataset, select_episodes
 
 
-def rec(ep, step, action, cum_reward, outcome=None, parse_status="ok", dirty=False):
+def rec(ep, step, action, cum_reward, outcome=None, parse_status="ok", dirty=False, model_id="", completion=""):
     return {
         "episode_id": ep, "step_idx": step, "parsed_action": action,
         "cum_reward": cum_reward, "outcome": outcome, "parse_status": parse_status,
         "monitor_flags": {"intervention": {"kind": "reflect"}} if dirty else {},
         "prompt_messages": [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}],
         "legal_actions": [action],
+        "model_id": model_id,
+        "completion": completion,
     }
 
 
@@ -72,3 +74,30 @@ def test_export_skips_fallback_random_and_writes_canonical(tmp_path):
     row = json.loads(out.read_text().strip())
     assert row["completion"][0]["content"] == "ACTION: GOOD"
     assert len(row["prompt"]) == 2  # clean system+user only
+
+
+def test_export_keeps_teacher_rationale_but_rebuilds_llm_completion(tmp_path):
+    # teacher records (model_id starts with "teacher:") keep their raw
+    # completion verbatim (process supervision, plan 002); model-generated
+    # records are still rebuilt from parsed_action since they can contain
+    # retry junk.
+    records = [
+        rec(
+            "teacher-ep", 0, "RRRR", 1.0, outcome="win",
+            model_id="teacher:x", completion="Because...\nACTION: RRRR",
+        ),
+        rec(
+            "llm-ep", 0, "GGBB", 1.0, outcome="win",
+            model_id="llm", completion="uh let me think... ACTION: WRONG\nACTION: GGBB",
+        ),
+    ]
+    cfg = TrainConfig()
+    out = tmp_path / "sft.jsonl"
+    export_sft_dataset(write_jsonl(tmp_path, records), out, cfg)
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+
+    teacher_row = next(r for r in rows if r["completion"][0]["content"].startswith("Because"))
+    assert teacher_row["completion"][0]["content"] == "Because...\nACTION: RRRR"
+
+    llm_row = next(r for r in rows if not r["completion"][0]["content"].startswith("Because"))
+    assert llm_row["completion"][0]["content"] == "ACTION: GGBB"

@@ -53,18 +53,38 @@ class SolverAgent(Agent):
         self.dup_ok = dup_ok
         self.system_prompt = system_prompt
         self._rng = random.Random(seed)
+        # constant per config: the full consistent-candidate space with no
+        # feedback yet, computed once instead of every turn
+        self._total = len(consistent_candidates(colors, code_length, dup_ok, []))
 
     def act(self, obs: Observation, history: list[ActionDecision]) -> ActionDecision:
-        cands = consistent_candidates(
-            self.colors, self.code_length, self.dup_ok, obs.metadata.get("history", [])
-        )
+        hist = obs.metadata.get("history", [])
+        cands = consistent_candidates(self.colors, self.code_length, self.dup_ok, hist)
         by_id = {a.id: a for a in obs.legal_actions}
         # intersect with the (possibly pruned) menu so the choice is always
         # menu-legal; fall back to the menu if the intersection is empty
         pool = [c for c in cands if c in by_id] or list(by_id)
         guess = self._rng.choice(pool)
+
+        # rationale verbalizes the deduction (STaR/Orca-style process
+        # supervision, plan 002): must never contain "ACTION:" except in the
+        # final line, so extract_action_token's last-line parsing stays safe.
+        if hist:
+            rationale = (
+                f"The feedback so far eliminates {self._total - len(cands)} of "
+                f"{self._total} possible codes; {len(cands)} candidates remain "
+                f"consistent with every (exact, partial) result. {guess} is one "
+                "of them."
+            )
+        else:
+            rationale = (
+                f"No feedback yet: all {self._total} codes are possible. "
+                f"{guess} probes {len(set(guess))} distinct colors."
+            )
+        completion = f"{rationale}\nACTION: {guess}"
+
         return ActionDecision(
             action=by_id[guess],
-            raw_completion=f"ACTION: {guess}",
+            raw_completion=completion,
             prompt_messages=build_messages(self.system_prompt, obs),
         )

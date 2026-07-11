@@ -100,7 +100,9 @@ class MastermindGame(Game):
             "the right color in the right position (exact), and how many are the "
             "right color in the wrong position (partial). Use the feedback to "
             "narrow down the code. Never repeat a guess — it gives no new "
-            "information."
+            "information. Strategy: guess codes consistent with ALL feedback "
+            "so far. State briefly what the feedback rules out, then choose "
+            "a consistent code."
         )
 
     @classmethod

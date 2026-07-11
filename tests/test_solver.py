@@ -1,8 +1,10 @@
 """Mastermind exact-solver teacher: candidate filtering, win rate through the
 real EpisodeRunner, LLM-identical prompts, monitor-clean episodes."""
 
+import re
 from pathlib import Path
 
+from slm_rl.agents.llm_agent import extract_action_token
 from slm_rl.config.loader import load_game_config
 from slm_rl.datagen.schema import RolloutRecord
 from slm_rl.datagen.writer import RolloutWriter
@@ -80,3 +82,30 @@ def test_teacher_records_feed_sft_export(tmp_path: Path):
 
     pairs = export_sft_dataset(out, tmp_path / "sft.jsonl", TrainConfig())
     assert pairs > 0
+
+
+def test_teacher_completion_verbalizes_rationale():
+    # process supervision (plan 002): the completion states the deduction
+    # (a number of remaining candidates) before the action line, and the
+    # rationale never breaks the "last ACTION: line" parsing contract.
+    agent, _ = make_teacher(CFG, seed=0)
+    game = MastermindGame(CFG)
+    obs = game.reset(seed=3)
+    decision = agent.act(obs, [])
+    completion = decision.raw_completion
+
+    assert completion.count("ACTION:") == 1  # single occurrence, on the last line
+    lines = completion.splitlines()
+    assert lines[-1].startswith("ACTION:")
+    assert re.search(r"\d", completion)  # candidate count is present
+
+    guess = extract_action_token(completion)
+    assert guess == decision.action.id
+
+    # play a second turn so the history-driven rationale branch is exercised
+    step = game.step(decision.action)
+    decision2 = agent.act(step.observation, [])
+    completion2 = decision2.raw_completion
+    assert completion2.count("ACTION:") == 1
+    assert completion2.splitlines()[-1] == f"ACTION: {decision2.action.id}"
+    assert extract_action_token(completion2) == decision2.action.id
