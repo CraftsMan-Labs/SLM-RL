@@ -20,9 +20,13 @@ def shape_reward(ctx: dict) -> float:
       lives_lost         bool: True if a life was lost this decision
       lives               lives remaining (None if the game has no concept
                           of lives)
-      turn                decision index this episode (0-based)
+      turn                decision count this episode (1-indexed: 1 after
+                          the first decision)
       terminated          bool: episode ended (loss of all lives, etc.)
-      truncated           bool: episode cut short (max_turns, monitor)
+      truncated           bool: episode cut short -- env truncation OR this
+                          decision hitting the max_turns cap. (Monitor
+                          truncation happens later, in the rollout runner,
+                          and is never visible here.)
       vector_obs          list[float], 128 RAM bytes / 255.0
 
     Two things this hook CANNOT affect (by design, see docs/ARCHITECTURE.md

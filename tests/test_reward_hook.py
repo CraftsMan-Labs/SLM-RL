@@ -4,6 +4,8 @@ formula's result. Skips entirely on machines without the [atari] extra."""
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 pytest.importorskip("ale_py")
@@ -102,3 +104,46 @@ def test_module_without_shape_reward_raises_on_first_step(tmp_path):
     game.reset(seed=0)  # construction/reset succeed; the module loads lazily
     with pytest.raises(ValueError, match="shape_reward"):
         game.step(SCRIPT[0])
+
+
+def test_max_turns_cap_delivers_truncated_true_and_one_indexed_turn(tmp_path):
+    # Plan 013 review R2: the hook runs AFTER the turn increment and the
+    # max_turns cap, so a cap-ended episode must deliver truncated=True to
+    # the hook, and ctx["turn"] is the 1-indexed decision count. The hook
+    # records each ctx to a JSONL side file (it runs inside the game
+    # process, so a file is the simplest cross-checkable channel).
+    log_path = tmp_path / "ctx_log.jsonl"
+    hook_path = tmp_path / "recording_hook.py"
+    hook_path.write_text(
+        "import json\n"
+        f"LOG = {str(log_path)!r}\n"
+        "def shape_reward(ctx):\n"
+        "    with open(LOG, 'a', encoding='utf-8') as f:\n"
+        "        f.write(json.dumps({'turn': ctx['turn'],\n"
+        "                            'truncated': ctx['truncated'],\n"
+        "                            'terminated': ctx['terminated']}) + '\\n')\n"
+        "    return ctx['default_reward']\n",
+        encoding="utf-8",
+    )
+    max_turns = 5  # far below any natural Space Invaders episode end
+    cfg = _cfg_with_extra({"reward_hook": str(hook_path)}).model_copy(
+        update={"max_turns": max_turns}
+    )
+
+    game = get_game("space-invaders")(cfg)
+    game.reset(seed=0)
+    for action in SCRIPT:
+        result = game.step(action)
+        if result.terminated or result.truncated:
+            break
+    assert result.truncated  # ended by the cap, not naturally
+
+    entries = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(entries) == max_turns
+    assert [e["turn"] for e in entries] == [1, 2, 3, 4, 5]  # 1-indexed count
+    # every pre-cap decision is mid-episode; the cap decision is truncated
+    assert [e["truncated"] for e in entries] == [False, False, False, False, True]
+    assert all(e["terminated"] is False for e in entries)

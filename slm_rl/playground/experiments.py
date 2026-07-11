@@ -287,8 +287,11 @@ def launch_evolve(exp: ExperimentDir, game: str, generations: int) -> subprocess
 
 
 def _spawn(cmd: list[str], log_path: Path) -> subprocess.Popen:
-    log_file = open(log_path, "w", encoding="utf-8")
-    return subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+    # Close the parent's copy of the log handle once Popen returns -- the
+    # child holds its own dup of the fd, so the parent copy would otherwise
+    # leak one open file per launched experiment for the server's lifetime.
+    with open(log_path, "w", encoding="utf-8") as log_file:
+        return subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
 
 
 def tail_log(exp: ExperimentDir, kind: str, lines: int = 50) -> list[str]:

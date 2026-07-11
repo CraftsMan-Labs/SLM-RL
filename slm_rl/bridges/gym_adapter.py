@@ -175,15 +175,22 @@ class GymnasiumGameAdapter(Game):
 
         self._ram = ram
         self._info = info
+        self._turn += 1
+
+        truncated = truncated or self._turn >= self.config.max_turns
 
         if self._reward_hook_path is not None:
             # Workshop playground (plan 013): the hook wraps exactly the
             # built-in formula's result, computed above. Absent -> this
             # branch never runs, so the reward computation is byte-identical
             # to before this knob existed (proven by test_reward_hook.py).
-            # Monitor-side penalties (retry/fallback/truncate) are applied
-            # later, in the rollout runner -- out of the hook's reach by
-            # design (they are cross-game concerns, not Atari-specific).
+            # Runs AFTER the turn increment and the max_turns cap so the
+            # ctx sees the episode's final truncated flag (a cap-ended
+            # episode delivers truncated=True) and turn as the 1-indexed
+            # decision count. Monitor-side penalties (retry/fallback/
+            # truncate) are applied later, in the rollout runner -- out of
+            # the hook's reach by design (they are cross-game concerns,
+            # not Atari-specific).
             reward = float(self._ensure_shape()(
                 {
                     "raw_points": raw_sum,          # ALE points this decision
@@ -191,16 +198,12 @@ class GymnasiumGameAdapter(Game):
                     "score": self._score,            # cumulative raw score
                     "lives_lost": lives_lost,        # bool: life lost this decision
                     "lives": cur_lives,
-                    "turn": self._turn,
+                    "turn": self._turn,              # 1-indexed decision count
                     "terminated": terminated,
-                    "truncated": truncated,
+                    "truncated": truncated,          # includes the max_turns cap
                     "vector_obs": self.vector_obs(), # 128 floats, RAM/255
                 }
             ))
-
-        self._turn += 1
-
-        truncated = truncated or self._turn >= self.config.max_turns
 
         if terminated or truncated:
             info = dict(info)

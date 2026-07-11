@@ -32,8 +32,16 @@ EVAL_TEMP = 0.2      # near-greedy for stable, paired evaluation
 
 
 class GenerationRunner:
-    def __init__(self, cfg: RunConfig):
+    def __init__(self, cfg: RunConfig, config_dir: Path | None = None):
         self.cfg = cfg
+        # Alternate configs/ root (playground experiments, plan 013): the
+        # GAME config must come from the same materialized dir as the run
+        # config, or an attendee's game-level knobs (monitor thresholds,
+        # reward_hook) silently vanish on the evolve path. None = repo
+        # configs/ = exact prior behavior. Deliberately NOT threaded into
+        # load_tiers: tier resolution is hardware detection, not an
+        # experiment knob, and experiment dirs don't carry hardware.yaml.
+        self.config_dir = config_dir
         tier = resolve_tier(load_tiers(), forced_name=cfg.tier)
         self.model_id = cfg.model or tier.model
         self.backend_name = cfg.backend or tier.backend
@@ -41,7 +49,7 @@ class GenerationRunner:
         self.strategy_name = cfg.train_strategy or tier.train
 
         self.game_cls = get_game(cfg.game)
-        self.game_cfg = load_game_config(cfg.game)
+        self.game_cfg = load_game_config(cfg.game, config_dir=config_dir)
         self.suite = self.game_cls.eval_suite()
         self.paths = RunPaths(cfg.home, cfg.run_id)
         self.registry = ModelRegistry(self.paths.registry)

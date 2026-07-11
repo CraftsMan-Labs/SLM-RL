@@ -347,3 +347,31 @@ def test_replay_window_skips_missing_generation(tmp_path, monkeypatch):
         assert f"gen_{gen_label}" in str(link.resolve()), (
             f"{link.name} points at {link.resolve()}"
         )
+
+
+def test_config_dir_threads_to_game_config(tmp_path, monkeypatch):
+    """Plan 013 review R1: GenerationRunner(cfg, config_dir=...) must load
+    the GAME config from the alternate dir (playground experiments
+    materialize game-level knobs there), while config_dir=None keeps
+    reading the repo configs exactly as before."""
+    import slm_rl.orchestrator.generation as gen
+    from slm_rl.config.loader import load_game_config
+
+    # Materialized-experiment-style dir: only the game yaml matters here
+    # (the runner loads the RUN config before construction, in the CLI).
+    cfg_dir = tmp_path / "config"
+    (cfg_dir / "games").mkdir(parents=True)
+    (cfg_dir / "games" / "mastermind.yaml").write_text(
+        "max_turns: 7\n", encoding="utf-8"
+    )
+
+    cfg = load_run_config(game="mastermind", overrides={
+        "run_id": "cfg-dir-test", "home": str(tmp_path / "runs"),
+    })
+
+    runner = gen.GenerationRunner(cfg, config_dir=cfg_dir)
+    assert runner.game_cfg.max_turns == 7  # the override, not the repo's 12
+
+    repo_value = load_game_config("mastermind").max_turns
+    runner_default = gen.GenerationRunner(cfg)
+    assert runner_default.game_cfg.max_turns == repo_value

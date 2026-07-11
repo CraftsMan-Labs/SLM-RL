@@ -235,7 +235,7 @@ def evolve(
     if train_overrides:
         overrides["train"] = train_overrides
     cfg = load_run_config(game=game, overrides=overrides, config_dir=cfg_dir)
-    runner = GenerationRunner(cfg)
+    runner = GenerationRunner(cfg, config_dir=cfg_dir)
     runner.ensure_baseline()
     start = runner.registry.next_generation
     end = start + generations
