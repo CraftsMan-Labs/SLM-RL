@@ -1,0 +1,15 @@
+# Mastermind curriculum entry point (Plan 006): 3-peg x 4-color = 64 codes.
+# Legal-random play wins ~19%, deduction wins ~100% -> effect sizes ~20x the
+# standard game, so experiments are statistically readable at 500 episodes.
+# Different benchmark from mastermind.yaml — never compare win rates across
+# the two without labeling which config produced them.
+max_turns: 10
+eval_episodes: 500
+eval_seeds_start: 10000
+monitor:
+  interventions: [reflect, truncate]   # backtrack pointless: no state to revisit
+  action_repeat_threshold: 2           # repeating a guess is always wasted
+extra:
+  code_length: 3
+  num_colors: 4
+  allow_duplicates: true

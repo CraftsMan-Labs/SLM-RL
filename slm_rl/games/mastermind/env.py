@@ -144,3 +144,14 @@ class MastermindGame(Game):
                 "history": [list(t) for t in self._history],
             },
         )
+
+
+@register_game("mastermind-easy")
+class MastermindEasyGame(MastermindGame):
+    """Curriculum entry point: same engine, 3x4 = 64-code space (plan 006).
+
+    A subclass rather than a re-registration of MastermindGame because
+    register_game sets cls.name — aliasing the same class object would
+    corrupt the standard game's identity (both names would report
+    name="mastermind-easy").
+    """

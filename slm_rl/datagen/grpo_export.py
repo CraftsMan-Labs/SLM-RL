@@ -24,7 +24,7 @@ MAX_PROMPTS = 512  # ponytail: fixed cap keeps GRPO generation minutes-long; mak
 
 def export_grpo_dataset(dataset_path: Path, out_path: Path, game_cfg: GameConfig) -> int:
     """Write {"prompt", "game_ctx"} JSONL rows; return row count."""
-    if game_cfg.name != "mastermind":
+    if not game_cfg.name.startswith("mastermind"):
         raise NotImplementedError(
             f"GRPO reward reconstruction only implemented for mastermind, got {game_cfg.name!r}"
         )
