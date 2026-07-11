@@ -187,7 +187,9 @@ class GRPOStrategy(TrainingStrategy):
             beta=self.cfg.kl_beta,
             entropy_coef=self.cfg.entropy_bonus,
             learning_rate=self.cfg.learning_rate,
-            num_train_epochs=1,
+            # more updates per unit of experience (Karpathy: ~800 updates over
+            # 200k games); entropy watchdog + KL-to-champion bound the extra drift
+            num_train_epochs=2,
             per_device_train_batch_size=8 if cuda else 2,
             gradient_accumulation_steps=2 if cuda else 8,
             bf16=cuda,

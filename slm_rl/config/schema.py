@@ -84,6 +84,8 @@ class TrainConfig(BaseModel):
     max_duplicate_action_sequences: int = 3  # diversity quota vs mode collapse
     # train on rollouts from the last N generations; 1 = current behavior
     replay_generations: int = 3
+    win_turn_cap: int = 0  # drop wins longer than this many steps; 0 = disabled
+    sft_win_final_dup: int = 1  # write a win's final decision pair this many times; 1 = disabled
 
 
 class TeacherConfig(BaseModel):

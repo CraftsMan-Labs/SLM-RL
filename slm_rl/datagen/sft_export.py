@@ -74,6 +74,19 @@ def select_episodes(dataset_path: Path, cfg: TrainConfig) -> list[list[dict]]:
     selected = {id(s): s for s in wins + top}.values()  # union, dedup by identity
     selected = list(selected) or top  # fallback keeps the loop fed (R7)
 
+    # win_turn_cap filters the FINAL union: long wins tend to have the
+    # highest cumulative return (per-turn format reward), so filtering only
+    # the wins list would let them re-enter via `top` almost every time.
+    # The cap never drops losses, so it cannot empty a non-empty selection
+    # (the fallback below re-adds a win whenever any was selected).
+    if cfg.win_turn_cap > 0:
+        surviving = [s for s in selected if not (outcome(s) == "win" and len(s) > cfg.win_turn_cap)]
+        # ponytail: if the cap removed every win, keep the shortest win so a
+        # winning demonstration always survives.
+        if wins and not any(outcome(s) == "win" for s in surviving):
+            surviving.append(min(wins, key=len))
+        selected = surviving
+
     # diversity quota: cap identical action sequences, prefer higher return
     by_seq: dict[tuple, list[list[dict]]] = defaultdict(list)
     for steps in selected:
@@ -93,6 +106,7 @@ def export_sft_dataset(dataset_path: Path, out_path: Path, cfg: TrainConfig) -> 
     pairs = 0
     with open(out_path, "w", encoding="utf-8") as fh:
         for steps in select_episodes(dataset_path, cfg):
+            is_win = steps[-1].get("outcome") == "win"
             for rec in steps:
                 if rec["parse_status"] == "fallback_random":
                     continue  # completion wouldn't match the action taken
@@ -109,6 +123,13 @@ def export_sft_dataset(dataset_path: Path, out_path: Path, cfg: TrainConfig) -> 
                     "prompt": prompt,
                     "completion": [{"role": "assistant", "content": content}],
                 }
-                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-                pairs += 1
+                # ponytail: duplication ≈ sample weighting; real per-sample
+                # weights if the trainer ever supports them. The final
+                # decision pair of a win (discount γ^0, highest-signal
+                # demonstration) is written sft_win_final_dup times.
+                is_final = is_win and rec is steps[-1]
+                reps = cfg.sft_win_final_dup if is_final else 1
+                for _ in range(reps):
+                    fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+                    pairs += 1
     return pairs

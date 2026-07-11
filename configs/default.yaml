@@ -23,6 +23,8 @@ train:
   exclude_monitor_flagged: true
   max_duplicate_action_sequences: 3
   replay_generations: 3   # train on rollouts from the last N generations; 1 = current behavior
+  win_turn_cap: 0            # drop wins longer than this many steps; 0 = disabled
+  sft_win_final_dup: 1       # write a win's final decision pair this many times; 1 = disabled
 
 gate:
   min_improvement: 0.01   # ~2 sigma on the 500-episode suite; 0.02 blocked a real 0%->1.6% warm start (hybrid-350m, Jul 2026)

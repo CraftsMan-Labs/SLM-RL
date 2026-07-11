@@ -66,6 +66,21 @@ game engine (pure Python, + vector_obs() hook)
    unchanged). This generalizes the hand-built Mastermind consistency reward
    to any game with a trainable teacher — the plan for Atari, where
    "consistency" has no hand-codable analogue.
+
+   **Why we don't graft terminal rewards onto GRPO.** It is tempting to stamp
+   a discounted terminal reward from the historical episode (win/loss, turns
+   to win) into `game_ctx` and add it as a GRPO reward function, mirroring
+   how SFT selection can prefer short wins. This is a no-op: GRPO samples a
+   *group* of 8 completions per prompt, and the historical terminal outcome
+   is the same constant for every member of that group (it comes from the
+   episode the prompt was drawn from, not from the sampled completion).
+   GRPO's advantage is group-normalized, `(r − mean(group)) / std(group)`,
+   which cancels any per-prompt constant exactly — the term would move every
+   sample's reward by the same amount and vanish after normalization.
+   Cross-turn credit assignment in this codebase is correctly carried by the
+   potential-shaped elimination reward above (Φ(s) = −log|consistent(s)|),
+   which telescopes to the terminal goal without this constant-cancellation
+   trap. (See plan 003.)
 4. **Gate purity (non-negotiable).** Eval stays LLM-only on the frozen suite.
    Teachers assist training but never inflate measured skill — promotion
    still means *the language model* got better. Side dividend: teacher
