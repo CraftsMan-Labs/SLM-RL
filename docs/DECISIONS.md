@@ -112,3 +112,25 @@ Implementation notes (Mastermind, Jul 2026):
   (small with-pruner suite) is the product metric, recorded only. On
   Mastermind the exact pruner saturates it (even a random policy wins ~100%
   under consistent-candidate menus) — the honest signal stays the gate.
+
+## D12. SFT warm-start is initialization, not a candidate
+
+Teacher-distilled `reject_sft` warm-start generations (`evolve --warm-start`,
+generation 1) are adopted unconditionally as the RL initialization: the
+candidate is still evaluated and the eval is recorded honestly, but
+`EvalGate.decide`'s win-rate margin check is bypassed for `teacher=True`
+generations. A collapsed or data-free teacher generation is still rejected —
+only a generation that actually produced a usable adapter skips the gate.
+
+**Why**: measured twice (runs `hybrid-350m`, `hybrid-350m-v2`, July 2026) —
+the warm start dramatically improved behavior (invalid actions 35%→0%,
+doom-loop interventions 2.0→1.5) but its win rate (0.4–1.6%) sat at the
+promotion margin, was rejected both times, and every subsequent RL
+generation restarted from the raw base model and regressed. A win-rate gate
+is the wrong instrument for an initialization stage — standard post-training
+practice (SFT stage → RL stage, InstructGPT-style) treats SFT as the starting
+point RL builds on, not a competitor it must first outscore.
+
+**Revisit if**: a warm start ever *degrades* invalid-rate or
+intervention-rate versus the raw base model — then re-introduce a
+behavioral (not win-rate) gate for it, rather than reviving the win-rate gate.

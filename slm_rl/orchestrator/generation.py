@@ -164,6 +164,15 @@ class GenerationRunner:
         elif result.adapter_path is None:  # nothing trained (no data)
             promote, reason = False, "no training data this generation"
             cand_metrics = champ_metrics
+        elif teacher:
+            # SFT warm-start is initialization, not a candidate (D12): the
+            # gate is a win-rate margin check, which is noisy at the
+            # warm-start's win-rate scale and discarded a 35%->0% invalid-rate
+            # improvement twice (Jul 2026). Eval stays honest; only the
+            # promotion decision is unconditional.
+            cand_metrics = self._eval(result.adapter_path)
+            promote = True
+            reason = "teacher warm-start adopted as RL initialization (not gated)"
         else:
             cand_metrics = self._eval(result.adapter_path)
             promote, reason = self.gate.decide(champ_metrics, cand_metrics)

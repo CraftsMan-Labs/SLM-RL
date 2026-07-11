@@ -133,15 +133,20 @@ def test_baseline_cached(tmp_path, monkeypatch):
 
 
 def test_warm_start_teacher_generation(tmp_path, monkeypatch):
+    # champ == cand: this would FAIL a normal gate (zero improvement). The
+    # warm-start must still be promoted unconditionally (D12) — the gate is
+    # bypassed, not won.
     runner = make_runner(
-        tmp_path, monkeypatch, champ_primary=0.00, cand_primary=0.50,
+        tmp_path, monkeypatch, champ_primary=0.10, cand_primary=0.10,
         teacher_overrides={"warmstart_episodes": 3},
     )
     runner.ensure_baseline()
     FakeBackend.closed_count = 0
     m = runner.run_generation(1, teacher=True)
 
-    assert m["gate"]["promoted"] is True  # normal gate semantics, teacher never in eval
+    assert m["gate"]["promoted"] is True  # adopted unconditionally, not via the gate margin
+    assert "not gated" in m["gate"]["reason"]
+    assert runner.registry.champion == 1
     assert m["rollout"]["episodes"] == 3  # warmstart_episodes, not episodes_per_generation
     assert FakeBackend.closed_count == 0  # no inference backend for teacher rollout
     manifest = json.loads(runner.paths.manifest(1).read_text())
@@ -150,6 +155,22 @@ def test_warm_start_teacher_generation(tmp_path, monkeypatch):
     rollout_text = next(runner.paths.rollouts(1).glob("*.jsonl")).read_text()
     assert "teacher:mastermind_solver" in rollout_text
     assert runner.registry.next_generation == 2  # evolve resumes normally after
+    # eval numbers stay honest even though the gate was bypassed
+    assert (runner.paths.generation(1) / "eval" / "results.json").exists()
+
+
+def test_warm_start_collapse_still_rejects(tmp_path, monkeypatch):
+    # a collapsed teacher generation must still be rejected -- the gate bypass
+    # only applies once training actually produced a usable adapter.
+    runner = make_runner(
+        tmp_path, monkeypatch, champ_primary=0.10, cand_primary=0.90, collapse=True,
+        teacher_overrides={"warmstart_episodes": 3},
+    )
+    runner.ensure_baseline()
+    m = runner.run_generation(1, teacher=True)
+
+    assert m["gate"]["promoted"] is False
+    assert runner.registry.champion == 0
 
 
 def test_remediation_lr_only_floored_and_reset_on_promotion(tmp_path, monkeypatch):
