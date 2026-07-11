@@ -90,7 +90,7 @@ def test_eval_gate_promote_and_reject():
     promote, reason = gate.decide(champ, better)
     assert promote, reason
 
-    no_gain = dict(better, primary=0.31)
+    no_gain = dict(better, primary=0.305)  # within min_improvement margin
     assert not gate.decide(champ, no_gain)[0]
 
     loopy = dict(better, intervention_rate=0.20)

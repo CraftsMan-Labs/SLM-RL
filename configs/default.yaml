@@ -24,7 +24,7 @@ train:
   max_duplicate_action_sequences: 3
 
 gate:
-  min_improvement: 0.02
+  min_improvement: 0.01   # ~2 sigma on the 500-episode suite; 0.02 blocked a real 0%->1.6% warm start (hybrid-350m, Jul 2026)
   max_intervention_rate_ratio: 1.1
   max_invalid_rate: 0.05
   min_mean_entropy: 0.2

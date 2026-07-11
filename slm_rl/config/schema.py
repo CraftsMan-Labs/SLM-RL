@@ -98,7 +98,8 @@ class TeacherConfig(BaseModel):
 class GateConfig(BaseModel):
     """EvalGate promotion criteria (D4, training level)."""
 
-    min_improvement: float = 0.02  # primary metric margin over champion
+    # ~2 sigma on a 500-episode suite; 0.02 blocked a real 0%->1.6% warm start
+    min_improvement: float = 0.01  # primary metric margin over champion
     max_intervention_rate_ratio: float = 1.1
     max_invalid_rate: float = 0.05
     min_mean_entropy: float = 0.2

@@ -102,7 +102,7 @@ def test_promote_on_improvement(tmp_path, monkeypatch):
 
 
 def test_reject_on_no_improvement(tmp_path, monkeypatch):
-    runner = make_runner(tmp_path, monkeypatch, champ_primary=0.40, cand_primary=0.41)
+    runner = make_runner(tmp_path, monkeypatch, champ_primary=0.40, cand_primary=0.405)
     runner.ensure_baseline()
     m = runner.run_generation(1)
 
