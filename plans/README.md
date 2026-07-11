@@ -22,12 +22,12 @@ CURRICULUM: start on mastermind-easy, 64 codes (006), ramp to standard
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Adopt teacher warm-start unconditionally as RL init | P1 | S | — | TODO |
-| 002 | Reasoning teacher (rationales) + strategy prompt | P1 | M | — (001 recommended first) | TODO |
-| 006 | mastermind-easy curriculum entry point | P1 | S | — | TODO |
-| 004 | Cross-generation replay window | P1 | M | 001 | TODO |
-| 003 | Return-weighted SFT + 2 GRPO epochs | P2 | S | 002 | TODO |
-| 007 | Live-play web UI (stream episodes to browser) | P2 | M | — (payoff bigger after 002) | TODO |
+| 001 | Adopt teacher warm-start unconditionally as RL init | P1 | S | — | DONE |
+| 002 | Reasoning teacher (rationales) + strategy prompt | P1 | M | — (001 recommended first) | DONE |
+| 006 | mastermind-easy curriculum entry point | P1 | S | — | DONE |
+| 004 | Cross-generation replay window | P1 | M | 001 | DONE |
+| 003 | Return-weighted SFT + 2 GRPO epochs | P2 | S | 002 | DONE |
+| 007 | Live-play web UI (stream episodes to browser) | P2 | M | — (payoff bigger after 002) | DONE |
 | 005 | Batched episode collection | P3 | L | — (land last) | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
