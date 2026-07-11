@@ -70,5 +70,5 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 008 | Space Invaders via Gymnasium/ALE (RAM -> text) | P1 | L | — | TODO |
+| 008 | Space Invaders via Gymnasium/ALE (RAM -> text) | P1 | L | — | DONE |
 | 009 | Heuristic Space Invaders teacher + warm start | P1 | M | 008 | PLANNED-NEXT (not yet written) |
