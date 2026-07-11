@@ -77,8 +77,11 @@ def rollout(
     adapter: str = typer.Option(None, help="LoRA adapter path (llm agent)"),
     pruner: bool = typer.Option(False, "--pruner/--no-pruner", help="Teacher menu pruning"),
     dqn_checkpoint: str = typer.Option(None, help="DQN teacher checkpoint (agent=solver only)"),
+    config_dir: str = typer.Option(None, help="Alternate configs/ root (playground experiments)"),
 ) -> None:
     """Generate rollouts (dataset product) without training."""
+    from pathlib import Path
+
     from slm_rl.agents.bots import RandomAgent
     from slm_rl.config.loader import load_game_config, load_run_config
     from slm_rl.datagen.writer import RolloutWriter
@@ -86,8 +89,9 @@ def rollout(
     from slm_rl.orchestrator.paths import RunPaths
     from slm_rl.rollout.runner import EpisodeRunner
 
-    run_cfg = load_run_config(game=game)
-    game_cfg = load_game_config(game)
+    cfg_dir = Path(config_dir) if config_dir else None
+    run_cfg = load_run_config(game=game, config_dir=cfg_dir)
+    game_cfg = load_game_config(game, config_dir=cfg_dir)
     game_cls = get_game(game)
     paths = RunPaths(run_cfg.home, run_id)
     out = paths.rollouts(generation) / f"{game}-seed{seed}.jsonl"
@@ -207,11 +211,15 @@ def evolve(
     hf_repo: str = typer.Option(None, help="Push each generation's datasets to this HF dataset repo"),
     pruner: bool = typer.Option(False, "--pruner/--no-pruner", help="Teacher menu pruning during rollout (HYBRID_RL.md)"),
     warm_start: bool = typer.Option(False, "--warm-start", help="Gen 1 = teacher rollout distilled via reject_sft"),
+    config_dir: str = typer.Option(None, help="Alternate configs/ root (playground experiments)"),
 ) -> None:
     """Run the full self-improvement loop for N generations."""
+    from pathlib import Path
+
     from slm_rl.config.loader import load_run_config
     from slm_rl.orchestrator.generation import GenerationRunner
 
+    cfg_dir = Path(config_dir) if config_dir else None
     overrides = {
         "run_id": run_id, "model": model, "backend": backend, "tier": tier,
         "train_strategy": train_strategy, "hf_dataset_repo": hf_repo,
@@ -226,7 +234,7 @@ def evolve(
         train_overrides["selection_quantile"] = selection_quantile
     if train_overrides:
         overrides["train"] = train_overrides
-    cfg = load_run_config(game=game, overrides=overrides)
+    cfg = load_run_config(game=game, overrides=overrides, config_dir=cfg_dir)
     runner = GenerationRunner(cfg)
     runner.ensure_baseline()
     start = runner.registry.next_generation
@@ -365,6 +373,21 @@ def watch(
 def new_game(name: str = typer.Argument(...)) -> None:
     """Scaffold a new game plugin."""
     _todo("Phase 4")
+
+
+@app.command()
+def playground(
+    game: str = typer.Option("space-invaders"),
+    home: str = typer.Option("./runs"),
+    port: int = typer.Option(8780),
+    host: str = typer.Option("127.0.0.1"),
+) -> None:
+    """Workshop UI: tweak knobs / reward code, launch quick CPU experiments,
+    compare on a scoreboard (plan 013). Stdlib-only, local by default."""
+    from slm_rl.playground.server import serve
+
+    typer.echo(f"playground for {game} -> http://{host}:{port}/?game={game}")
+    serve(home, game, host=host, port=port)
 
 
 if __name__ == "__main__":

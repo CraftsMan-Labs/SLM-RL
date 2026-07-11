@@ -5,9 +5,11 @@ obs_type="ram") into our `Game` contract via a per-game ObservationRenderer
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import random
 from abc import ABC, abstractmethod
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from slm_rl.games.base import ActionSpec, Game, Observation, StepResult
 
@@ -49,6 +51,23 @@ class GymnasiumGameAdapter(Game):
         # = disabled = exact pre-existing behavior (CODING_GUIDELINE Sec 2:
         # new knobs default to current behavior unchanged).
         self.noop_start_max: int = int(extra.get("noop_start_max", 0))
+        # Workshop playground (plan 013): optional reward-shaping hook, a
+        # path to a Python file defining shape_reward(ctx: dict) -> float.
+        # Resolved eagerly (missing file -> ValueError now, same doctrine as
+        # dqn_checkpoint in make_teacher — never a silent fallback) but
+        # loaded lazily on first step() so importing this module never pays
+        # for importlib machinery when no hook is set (the common case).
+        # None -> the code path in step() below is byte-identical to before
+        # this knob existed (CODING_GUIDELINE Sec 2: new knobs default to
+        # current behavior unchanged).
+        reward_hook = extra.get("reward_hook")
+        self._reward_hook_path: Path | None = None
+        if reward_hook is not None:
+            path = Path(reward_hook)
+            if not path.is_file():
+                raise ValueError(f"reward_hook not found: {reward_hook!r}")
+            self._reward_hook_path = path
+        self._shape: Callable[[dict[str, Any]], float] | None = None
 
         self._env = None
         self._action_ids: list[str] = []
@@ -111,6 +130,25 @@ class GymnasiumGameAdapter(Game):
 
         return self._observation()
 
+    def _ensure_shape(self) -> Callable[[dict[str, Any]], float]:
+        """Load and cache shape_reward from `self._reward_hook_path` on first
+        use. A module without a callable `shape_reward` -> ValueError here,
+        not at construction (mirrors the file-existence check, which IS at
+        construction time — see __init__)."""
+        if self._shape is None:
+            spec = importlib.util.spec_from_file_location(
+                "slm_rl_playground_reward_hook", self._reward_hook_path
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            shape = getattr(module, "shape_reward", None)
+            if not callable(shape):
+                raise ValueError(
+                    f"reward_hook {str(self._reward_hook_path)!r} has no callable shape_reward(ctx)"
+                )
+            self._shape = shape
+        return self._shape
+
     def step(self, action: ActionSpec) -> StepResult:
         env = self._ensure_env()
         ale_action = self._action_ids.index(action.id)
@@ -130,12 +168,36 @@ class GymnasiumGameAdapter(Game):
 
         prev_lives = self._lives
         cur_lives = info.get("lives")
-        if prev_lives is not None and cur_lives is not None and cur_lives < prev_lives:
+        lives_lost = prev_lives is not None and cur_lives is not None and cur_lives < prev_lives
+        if lives_lost:
             reward += self.life_loss_penalty  # penalty is negative, so add
         self._lives = cur_lives
 
         self._ram = ram
         self._info = info
+
+        if self._reward_hook_path is not None:
+            # Workshop playground (plan 013): the hook wraps exactly the
+            # built-in formula's result, computed above. Absent -> this
+            # branch never runs, so the reward computation is byte-identical
+            # to before this knob existed (proven by test_reward_hook.py).
+            # Monitor-side penalties (retry/fallback/truncate) are applied
+            # later, in the rollout runner -- out of the hook's reach by
+            # design (they are cross-game concerns, not Atari-specific).
+            reward = float(self._ensure_shape()(
+                {
+                    "raw_points": raw_sum,          # ALE points this decision
+                    "default_reward": reward,        # what the built-in formula produced
+                    "score": self._score,            # cumulative raw score
+                    "lives_lost": lives_lost,        # bool: life lost this decision
+                    "lives": cur_lives,
+                    "turn": self._turn,
+                    "terminated": terminated,
+                    "truncated": truncated,
+                    "vector_obs": self.vector_obs(), # 128 floats, RAM/255
+                }
+            ))
+
         self._turn += 1
 
         truncated = truncated or self._turn >= self.config.max_turns

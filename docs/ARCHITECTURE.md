@@ -96,6 +96,46 @@ and renders real frames on demand (a minimal stdlib PNG encoder,
 observer: replay never touches the rollout/training path, and non-Atari
 games (Mastermind) get a 501 by design.
 
+## Workshop playground (`slm-rl playground`)
+
+`slm_rl/playground/` is a small workshop UI (plan 013) for attendees to
+tweak the system and *measure* whether their change helped, without
+touching the repo: a knob form (max_turns, reward-shaping constants,
+monitor thresholds, selection quantile, teacher choice, ...) plus a reward-
+code tab, a "run experiment" button that launches a quick CPU screen
+(`--agent solver|random`, ~1-3 min), and a scoreboard comparing mean/
+median/max score, action mix, and intervention counts across experiments.
+Like `slm_rl/webui/`, it is stdlib-only (`http.server`, `json`,
+`threading`), so it holds on the 8GB tier with no optional extras
+installed — but unlike the viewer, it is a read-**write** surface: it
+writes only under `runs/playground/<name>/`, never elsewhere.
+
+**Reproducibility by construction.** Each experiment is materialized to
+`runs/playground/<name>/config/{default.yaml, games/<game>.yaml}` — the
+repo configs deep-merged with the attendee's knob values — then a `rollout`
+(or `evolve`) subprocess is launched pointed at that directory via
+`--config-dir` (both config loaders already accepted this; the CLI just
+didn't expose it). The experiment directory IS its config, and every
+experiment gets its own run-id (`pg-<name>`), so playground numbers are
+never silently compared against a main run.
+
+**The reward-code seam.** The gym adapter gained an optional
+`extra["reward_hook"]`: a path to a Python file defining `shape_reward(ctx)
+-> float`, loaded via `importlib` and applied as a thin wrapper around the
+existing reward formula. Absent, the code path is byte-identical to before
+this knob existed (proven by `tests/test_reward_hook.py`). This reshapes
+*training-time* reward — which drives reject_sft's top-quantile episode
+selection, the pedagogical point of the exercise — but the eval gate's
+primary metric is mean raw score parsed from `outcome`, which the hook
+cannot touch (CODING_GUIDELINE invariant 2: eval-gate purity). Monitor-side
+penalties (retry/fallback/truncate) are also outside the hook's reach — they
+are applied later, in the rollout runner.
+
+**Trust model.** Executing attendee-written Python is by design: this is a
+local tool run on the attendee's own machine, the same trust model as them
+editing the repo directly. It binds `127.0.0.1` by default and should not be
+exposed beyond localhost.
+
 ## Anti-doom-loop design (two levels)
 
 **Rollout level — `DoomLoopMonitor`** (`rollout/monitor.py`), per step:
