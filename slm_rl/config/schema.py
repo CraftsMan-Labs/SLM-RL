@@ -100,6 +100,10 @@ class TeacherConfig(BaseModel):
     pruner_fraction: float = 0.5  # fraction of rollout episodes pruned (rest stay format-mode, matching the gate eval)
     warmstart_episodes: int = 1000  # teacher episodes for the gen-1 warm start
     eval_pruned_episodes: int = 100  # with-pruner side metric; 0 disables; never gated
+    # Path to a trained DQN teacher checkpoint (slm-rl train-dqn); None = the
+    # game's default teacher (heuristic/solver). A set-but-missing path is an
+    # error, never a silent fallback (plan 012).
+    dqn_checkpoint: str | None = None
 
 
 class GateConfig(BaseModel):

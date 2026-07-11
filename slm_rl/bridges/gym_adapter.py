@@ -191,6 +191,10 @@ class GymnasiumGameAdapter(Game):
             "score": self._score,
             "lives": self._lives,
             "decision": self._turn,
+            # RAM-based teachers/pruners (dqn.py) get the vector without game-
+            # object access; a list of 128 floats per decision, dwarfed by
+            # prompt_messages -- see plan 012.
+            "vector_obs": self.vector_obs(),
         }
         # Optional protocol: a renderer may expose decode(raw_obs) -> dict
         # for non-LLM consumers (the heuristic teacher, plan 009) without

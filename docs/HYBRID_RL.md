@@ -124,12 +124,22 @@ rather than hoping training gets it there. That matters most for the 350M:
    this env is seed-invariant, so without it 1000 warm-start episodes would
    be one episode 1000 times. `teachers/dqn.py` (below) remains the
    principled upgrade path once it lands.
-2. **`teachers/dqn.py`** (CleanRL `dqn.py` pattern, MLP over `vector_obs()`)
-   when Freeway lands (Phase 3) — Atari is where a learned teacher earns its
-   keep. Blackjack's basic-strategy table is another exact-teacher case.
+2. **`teachers/dqn.py`** — ✅ landed (plan 012, Jul 2026): CleanRL `dqn.py`
+   pattern, MLP over `Game.vector_obs()`, driving the `Game` object at
+   decision granularity (not a raw gym env). Train via `slm-rl train-dqn
+   --game space-invaders --decisions 500000 --out <path>`; adopt on a run
+   via `teacher.dqn_checkpoint: <path>` (or `slm-rl rollout --agent solver
+   --dqn-checkpoint <path>`) — `make_teacher` then returns
+   `DQNTeacherAgent` instead of the heuristic, same `Agent` contract
+   (Q-verbalized rationales, epsilon exploration for warm-start diversity,
+   self-describing checkpoint: `state_dict`, `obs_dim`, `n_actions`,
+   `action_ids`). The quality gate belongs to the operator: compare the
+   checkpoint's mean episode reward against the heuristic teacher's
+   (~7.9 uncapped, plan 009) before adopting — never automatic.
 3. **Learned shaping term** (teacher V(s) stamped into `game_ctx`) once DQN
    teacher Q-values exist on disk — the Mastermind elimination reward is this
-   seam's exact special case.
+   seam's exact special case. Top-k Q menus (pruner seam) are the other
+   designed follow-up; both are out of scope for plan 012.
 
 Honest framing: a DQN will flatly beat our SLMs at Atari scores. That's fine —
 the product is a language-native reasoning agent and its dataset; classical

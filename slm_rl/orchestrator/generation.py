@@ -126,7 +126,9 @@ class GenerationRunner:
             from slm_rl.teachers import make_teacher
 
             backend = None
-            agent, model_id = make_teacher(self.game_cfg, seed=self.cfg.seed)
+            agent, model_id = make_teacher(
+                self.game_cfg, seed=self.cfg.seed, dqn_checkpoint=self.cfg.teacher.dqn_checkpoint,
+            )
             n = self.cfg.teacher.warmstart_episodes
             strategy_name = "reject_sft"  # expert traces distill via SFT on every tier
         else:

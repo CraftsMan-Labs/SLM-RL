@@ -76,6 +76,7 @@ def rollout(
     tier: str = typer.Option(None),
     adapter: str = typer.Option(None, help="LoRA adapter path (llm agent)"),
     pruner: bool = typer.Option(False, "--pruner/--no-pruner", help="Teacher menu pruning"),
+    dqn_checkpoint: str = typer.Option(None, help="DQN teacher checkpoint (agent=solver only)"),
 ) -> None:
     """Generate rollouts (dataset product) without training."""
     from slm_rl.agents.bots import RandomAgent
@@ -101,7 +102,7 @@ def rollout(
     elif agent == "solver":
         from slm_rl.teachers import make_teacher
 
-        solver, model_id = make_teacher(game_cfg, seed=seed)
+        solver, model_id = make_teacher(game_cfg, seed=seed, dqn_checkpoint=dqn_checkpoint)
         make_agent = lambda i: solver  # noqa: E731
     else:
         make_agent = lambda i: RandomAgent(seed=seed + i)  # noqa: E731
@@ -166,6 +167,23 @@ def train(
     result = strategy.train(dataset, paths.generation(gen))
     typer.echo(f"trained -> {result.adapter_path}")
     typer.echo(f"metrics: {result.metrics}")
+
+
+@app.command("train-dqn")
+def train_dqn_cmd(
+    game: str = typer.Option(..., help="Game to train the DQN teacher on (e.g. space-invaders)"),
+    decisions: int = typer.Option(500_000, help="Training decisions (engine-speed steps)"),
+    out: str = typer.Option(..., help="Checkpoint output path"),
+    device: str = typer.Option("cpu", help="torch device (cpu | cuda)"),
+    seed: int = typer.Option(0),
+) -> None:
+    """Train a CleanRL-pattern DQN teacher over Game.vector_obs() (plan 012)."""
+    from slm_rl.config.loader import load_game_config
+    from slm_rl.teachers.dqn import train_dqn
+
+    game_cfg = load_game_config(game)
+    summary = train_dqn(game_cfg, decisions=decisions, out_path=out, device=device, seed=seed)
+    typer.echo(f"summary: {summary}")
 
 
 @app.command()
