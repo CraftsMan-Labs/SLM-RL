@@ -74,4 +74,4 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 | 009 | Heuristic Space Invaders teacher + warm start | P1 | M | 008 | DONE |
 | 010 | Live game screen (deterministic frame replay in webui) | P1 | M | 007, 008 | DONE |
 | 011 | Vision-model play: LFM2.5-VL-450M reads frames | P1 | L | 008, 010 | PLANNED-NEXT (not yet written) |
-| 012 | CleanRL DQN teacher over RAM bytes (train-dqn CLI, Q-rationales) | P1 | L | 008, 009 | TODO |
+| 012 | CleanRL DQN teacher over RAM bytes (train-dqn CLI, Q-rationales) | P1 | L | 008, 009 | DONE (1578210) |
