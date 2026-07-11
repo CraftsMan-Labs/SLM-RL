@@ -28,7 +28,7 @@ CURRICULUM: start on mastermind-easy, 64 codes (006), ramp to standard
 | 004 | Cross-generation replay window | P1 | M | 001 | DONE |
 | 003 | Return-weighted SFT + 2 GRPO epochs | P2 | S | 002 | DONE |
 | 007 | Live-play web UI (stream episodes to browser) | P2 | M | — (payoff bigger after 002) | DONE |
-| 005 | Batched episode collection | P3 | L | — (land last) | TODO |
+| 005 | Batched episode collection | P3 | L | — (land last) | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
