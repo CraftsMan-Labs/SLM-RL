@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -152,9 +153,29 @@ class GenerationRunner:
         dataset = self.paths.dataset(generation)
         consolidate(self.paths.rollouts(generation), dataset)
 
+        # replay window: this gen + up to N-1 previous gens that have rollouts
+        # (plan 004 — cross-generation replay). Gen 0 is baseline-only (no
+        # rollouts) and is naturally excluded by the exists() filter; teacher
+        # rollouts (gen 1) enter the window like any other generation's.
+        window = range(max(1, generation - self.cfg.train.replay_generations + 1), generation + 1)
+        sources = [(g, self.paths.rollouts(g)) for g in window if self.paths.rollouts(g).exists()]
+        train_view = dataset
+        if len(sources) > 1:
+            replay_src = self.paths.generation(generation) / "dataset" / "replay_src"
+            replay_src.mkdir(parents=True, exist_ok=True)
+            for g, src_dir in sources:
+                for jsonl in sorted(src_dir.glob("*.jsonl")):
+                    link = replay_src / f"g{g:03d}-{jsonl.name}"
+                    # is_symlink (not exists): a stale link to a deleted target
+                    # must not crash the resume path with FileExistsError
+                    if not link.is_symlink():
+                        os.symlink(jsonl.resolve(), link)
+            train_view = self.paths.generation(generation) / "dataset" / "replay.parquet"
+            consolidate(replay_src, train_view)
+
         # 4. TRAIN
         strategy = create_strategy(strategy_name, self.cfg.train, self.model_id, self.game_cfg)
-        result = strategy.train(dataset, self.paths.generation(generation), init_adapter=champ_adapter)
+        result = strategy.train(train_view, self.paths.generation(generation), init_adapter=champ_adapter)
 
         # 5. EVAL candidate + 6. GATE
         if result.metrics.get("entropy_collapsed"):

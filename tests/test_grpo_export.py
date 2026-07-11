@@ -13,9 +13,10 @@ from slm_rl.games.mastermind.env import MastermindGame, score_guess
 GAME_CFG = GameConfig(name="mastermind")
 
 
-def rec(ep, step, seed, action, user_text):
+def rec(ep, step, seed, action, user_text, generation=1):
     return {
         "episode_id": ep, "step_idx": step, "seed": seed, "parsed_action": action,
+        "generation": generation,
         "prompt_messages": [
             {"role": "system", "content": "s"},
             {"role": "user", "content": user_text},
@@ -69,6 +70,23 @@ def test_cap_prefers_later_turns(tmp_path, monkeypatch):
     assert export_grpo_dataset(write_jsonl(tmp_path, records), out, GAME_CFG) == 2
     priors = [len(json.loads(json.loads(l)["game_ctx"])["prior"]) for l in out.read_text().splitlines()]
     assert sorted(priors) == [3, 4]  # the two latest turns kept
+
+
+def test_cap_prefers_recent_generations(tmp_path, monkeypatch):
+    # gen 1 has a later step_idx than gen 2, but under the cap only gen-2
+    # rows should survive: replay windows must not let stale generations
+    # crowd out fresher (more on-policy) prompts (plan 004, step 3).
+    monkeypatch.setattr(grpo_export, "MAX_PROMPTS", 2)
+    records = [
+        rec("e1", 5, 7, "RRRR", "gen1 turn", generation=1),
+        rec("e2", 0, 8, "GGGG", "gen2 turn 0", generation=2),
+        rec("e2", 1, 8, "YYBB", "gen2 turn 1", generation=2),
+    ]
+    out = tmp_path / "g.jsonl"
+    assert export_grpo_dataset(write_jsonl(tmp_path, records), out, GAME_CFG) == 2
+    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    kept_texts = {r["prompt"][1]["content"] for r in rows}
+    assert kept_texts == {"gen2 turn 0", "gen2 turn 1"}
 
 
 def test_non_mastermind_rejected(tmp_path):

@@ -36,7 +36,7 @@ def export_grpo_dataset(dataset_path: Path, out_path: Path, game_cfg: GameConfig
         steps.sort(key=lambda r: r["step_idx"])
 
     game = get_game(game_cfg.name)(game_cfg)
-    rows: list[tuple[int, dict]] = []  # (step_idx, row) for later-turn preference
+    rows: list[tuple[tuple[int, int], dict]] = []  # ((generation, step_idx), row): later generations and later turns preferred
     seen: set[str] = set()
     for steps in episodes.values():
         game.reset(steps[0]["seed"])
@@ -66,9 +66,9 @@ def export_grpo_dataset(dataset_path: Path, out_path: Path, game_cfg: GameConfig
                 # pruned-menu prompt: the model answers by index, so rewards
                 # need the menu to resolve it (and to reject off-menu codes)
                 ctx["menu"] = menu
-            rows.append((rec["step_idx"], {"prompt": prompt, "game_ctx": json.dumps(ctx)}))
+            rows.append(((rec["generation"], rec["step_idx"]), {"prompt": prompt, "game_ctx": json.dumps(ctx)}))
 
-    rows.sort(key=lambda t: t[0], reverse=True)  # later turns carry more feedback
+    rows.sort(key=lambda t: t[0], reverse=True)  # later generations, then later turns, carry more feedback
     rows = rows[:MAX_PROMPTS]
 
     out_path = Path(out_path)

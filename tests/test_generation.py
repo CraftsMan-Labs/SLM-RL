@@ -43,25 +43,29 @@ def scripted_metrics(primary):
 
 
 def make_runner(tmp_path, monkeypatch, champ_primary, cand_primary, collapse=False,
-                more_candidates=(), teacher_overrides=None):
+                more_candidates=(), teacher_overrides=None, train_overrides=None):
     """Build a GenerationRunner whose eval returns scripted metrics and whose
     training is a no-op producing a dummy adapter."""
     from slm_rl import orchestrator
     import slm_rl.orchestrator.generation as gen
 
+    train_cfg = {"episodes_per_generation": 2, **(train_overrides or {})}
     cfg = load_run_config(game="mastermind", overrides={
         "run_id": "test", "home": str(tmp_path),
-        "train": {"episodes_per_generation": 2},
+        "train": train_cfg,
         "teacher": teacher_overrides,
     })
 
     # fake backend + strategy via the lazy factories the runner calls
     monkeypatch.setattr(gen, "create_backend", lambda *a, **k: FakeBackend(0.0))
 
+    dataset_paths = []
+
     class FakeStrategy(TrainingStrategy):
         name = "fake"
 
         def train(self, dataset_path, out_dir, init_adapter=None):
+            dataset_paths.append(Path(dataset_path))
             if collapse:
                 return TrainResult(adapter_path=init_adapter, metrics={"entropy_collapsed": True})
             adapter = Path(out_dir) / "adapter"
@@ -72,6 +76,7 @@ def make_runner(tmp_path, monkeypatch, champ_primary, cand_primary, collapse=Fal
     monkeypatch.setattr(gen, "create_strategy", lambda *a, **k: FakeStrategy(cfg.train, "m"))
 
     runner = gen.GenerationRunner(cfg)
+    runner.dataset_paths = dataset_paths
 
     # scripted eval: champion baseline, candidate, then any extras in order
     metrics_seq = iter(
@@ -229,3 +234,77 @@ def test_no_eval_pruned_without_pruner(tmp_path, monkeypatch):
     runner.ensure_baseline()
     m = runner.run_generation(1)
     assert "eval_pruned" not in m
+
+
+def test_replay_window_feeds_trainer(tmp_path, monkeypatch):
+    import pyarrow.parquet as pq
+
+    # both generations must promote so gen 2's rollout dir builds on gen 1's
+    # champion; more_candidates supplies gen 2's candidate eval.
+    runner = make_runner(
+        tmp_path, monkeypatch, champ_primary=0.10, cand_primary=0.40,
+        more_candidates=(0.70,), train_overrides={"replay_generations": 3},
+    )
+    runner.ensure_baseline()
+    runner.run_generation(1)
+    runner.run_generation(2)
+
+    assert len(runner.dataset_paths) == 2
+    gen1_dataset, gen2_dataset = runner.dataset_paths
+    # gen 1 has no prior generation with rollouts (gen 0 is baseline-only) ->
+    # plain per-gen parquet, same as current behavior
+    assert gen1_dataset == runner.paths.dataset(1)
+    # gen 2 has gen 1 in its window -> replay view
+    assert gen2_dataset.name == "replay.parquet"
+    assert gen2_dataset == runner.paths.generation(2) / "dataset" / "replay.parquet"
+
+    generations_seen = {row["generation"] for row in pq.read_table(gen2_dataset).to_pylist()}
+    assert generations_seen == {1, 2}
+
+    # the per-generation parquet is still published untouched
+    assert runner.paths.dataset(2).exists()
+    assert runner.paths.dataset(2).name == "train.parquet"
+
+
+def test_replay_disabled_is_current_behavior(tmp_path, monkeypatch):
+    runner = make_runner(
+        tmp_path, monkeypatch, champ_primary=0.10, cand_primary=0.40,
+        more_candidates=(0.70,), train_overrides={"replay_generations": 1},
+    )
+    runner.ensure_baseline()
+    runner.run_generation(1)
+    runner.run_generation(2)
+
+    assert len(runner.dataset_paths) == 2
+    gen1_dataset, gen2_dataset = runner.dataset_paths
+    assert gen1_dataset == runner.paths.dataset(1)
+    # window of size 1 means only gen 2 itself -> plain per-gen parquet, no replay file
+    assert gen2_dataset == runner.paths.dataset(2)
+    assert not (runner.paths.generation(2) / "dataset" / "replay.parquet").exists()
+
+
+def test_replay_window_skips_missing_generation(tmp_path, monkeypatch):
+    # a hole in the middle of the window (gen 1 rollouts deleted) must not
+    # shift symlink provenance: g{NNN}-* must always point INTO gen_NNN
+    import re
+    import shutil
+
+    runner = make_runner(
+        tmp_path, monkeypatch, champ_primary=0.10, cand_primary=0.40,
+        more_candidates=(0.70, 0.90), train_overrides={"replay_generations": 3},
+    )
+    runner.ensure_baseline()
+    runner.run_generation(1)
+    runner.run_generation(2)
+    shutil.rmtree(runner.paths.rollouts(1))  # e.g. pruned by an operator
+    runner.run_generation(3)
+
+    replay_src = runner.paths.generation(3) / "dataset" / "replay_src"
+    names = sorted(p.name for p in replay_src.iterdir())
+    assert any(n.startswith("g002-") for n in names)
+    assert not any(n.startswith("g001-") for n in names)
+    for link in replay_src.iterdir():
+        gen_label = re.match(r"g(\d{3})-", link.name).group(1)
+        assert f"gen_{gen_label}" in str(link.resolve()), (
+            f"{link.name} points at {link.resolve()}"
+        )

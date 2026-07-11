@@ -82,6 +82,8 @@ class TrainConfig(BaseModel):
     selection_quantile: float = 0.25  # keep top-quantile reward trajectories
     exclude_monitor_flagged: bool = True
     max_duplicate_action_sequences: int = 3  # diversity quota vs mode collapse
+    # train on rollouts from the last N generations; 1 = current behavior
+    replay_generations: int = 3
 
 
 class TeacherConfig(BaseModel):
