@@ -39,6 +39,7 @@ connect4 = "slm_rl.games.connect4:Connect4Game"
 blackjack = "slm_rl.games.blackjack:BlackjackGame"
 atari_freeway = "slm_rl.games.atari:FreewayGame"
 dominion = "slm_rl.games.dominion:DominionGame"
+space-invaders = "slm_rl.games.atari.space_invaders:SpaceInvadersGame"
 
 [tool.hatch.build.targets.wheel]
 packages = ["slm_rl"]

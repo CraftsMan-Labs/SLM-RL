@@ -101,3 +101,8 @@ Candidate ramp, easiest first (all AtariARI-annotated):
 Dense-score games (Pong, Breakout, Space Invaders) fit the GRPO strategy
 especially well: the environment reward itself provides group variance that
 sparse-win games like Mastermind need engineered rewards for.
+
+Space Invaders landed first (plan 008, out-of-ramp-order by user request) via
+exactly this recipe — `GymnasiumGameAdapter` + `SpaceInvadersRenderer` +
+`games/atari/ram_maps/space_invaders.py` — trained via `reject_sft` (GRPO
+stays Mastermind-only for now).

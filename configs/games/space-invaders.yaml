@@ -1,0 +1,23 @@
+# First ALE game (plan 008). Score game: gate compares mean_score, not
+# win_rate. Atari legitimately repeats actions (hold LEFT, spam FIRE), so
+# the doom-loop thresholds are much looser than board games'.
+max_turns: 80            # LLM decisions; x action_repeat(3) x frameskip(4) ~ 960 frames
+eval_episodes: 100
+eval_seeds_start: 10000
+monitor:
+  interventions: [reflect, truncate]
+  action_repeat_threshold: 12
+  ngram_loop_threshold: 8
+  state_revisit_threshold: 6
+  # default (15) is Mastermind-tuned: 15 non-improving guesses really is a
+  # doom loop there. Space Invaders reward is sparse (aim-dependent hits),
+  # so even legitimate/random play routinely goes >15 decisions without
+  # scoring -- verified empirically (plan 008): a RandomAgent was falsely
+  # flagged as stagnant and truncated as early as decision 16. Loosened so
+  # the monitor still fires eventually, just not on normal sparse-reward play.
+  reward_stagnation_window: 40
+extra:
+  env_id: ALE/SpaceInvaders-v5
+  action_repeat: 3
+  score_scale: 30.0        # max single-invader value; keeps per-step reward <= ~1
+  life_loss_penalty: -0.5

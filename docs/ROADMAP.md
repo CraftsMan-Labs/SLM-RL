@@ -29,6 +29,7 @@ The milestone that proves the whole thesis end-to-end.
 
 - `gym_adapter.py` + ALE Freeway RAM→text renderer, decision-point downsampling
 - Further ALE games as self-contained plugins, easiest-first ramp: Pong → Breakout → Space Invaders (→ Ms. Pac-Man as a flagship-tier stretch) — see PLUGIN_GUIDE.md §6
+  - ✅ Space Invaders landed (plan 008, out-of-ramp-order by user request): `GymnasiumGameAdapter` + RAM→text renderer, `reject_sft`-only (GRPO stays Mastermind-only)
 - Full monitor suite: state-hash revisits, reward stagnation, reflect/backtrack/truncate ladder + degenerate-agent tests
 - Entropy-floor alarm + auto-remediation; optional antidoom hygiene stage
 - SFT warm-start pipeline from heuristic/teacher traces (tiny models need it for Atari)
