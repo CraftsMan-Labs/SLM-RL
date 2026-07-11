@@ -5,6 +5,7 @@ obs_type="ram") into our `Game` contract via a per-game ObservationRenderer
 from __future__ import annotations
 
 import hashlib
+import random
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -44,6 +45,10 @@ class GymnasiumGameAdapter(Game):
         self.action_repeat: int = int(extra.get("action_repeat", 3))
         self.score_scale: float = float(extra.get("score_scale", 30.0))
         self.life_loss_penalty: float = float(extra.get("life_loss_penalty", -0.5))
+        # Mnih et al. 2015 DQN eval protocol: random no-op starts. Default 0
+        # = disabled = exact pre-existing behavior (CODING_GUIDELINE Sec 2:
+        # new knobs default to current behavior unchanged).
+        self.noop_start_max: int = int(extra.get("noop_start_max", 0))
 
         self._env = None
         self._action_ids: list[str] = []
@@ -76,6 +81,34 @@ class GymnasiumGameAdapter(Game):
         self._turn = 0
         self._score = 0.0
         self._lives = info.get("lives")
+
+        if self.noop_start_max > 0 and seed is not None:
+            # CODING_GUIDELINE Sec 1.4: derived seed is arithmetic, not a
+            # hash/tuple. ALE (repeat_action_probability=0.0) is otherwise
+            # seed-invariant at reset (measured 2026-07-11): without this,
+            # every eval seed replays the identical initial board. k
+            # no-op steps before the first real decision make eval seeds
+            # meaningful again (Mnih et al. 2015 DQN eval protocol).
+            rng = random.Random(seed * 10_007 + 11)
+            k = rng.randint(0, self.noop_start_max)
+            if "NOOP" in self._action_ids:
+                noop_id = self._action_ids.index("NOOP")
+            else:
+                noop_id = 0  # ponytail: assumes action 0 is a no-op-like action
+                             # when the env doesn't expose "NOOP" explicitly;
+                             # true fallback would inspect the action semantics.
+            for _ in range(k):
+                ram, _reward, terminated, truncated, info = env.step(noop_id)
+                # These frames precede the first decision -- never counted
+                # into score/turn. If life is lost or the episode ends during
+                # no-ops (practically impossible in Space Invaders, but
+                # guarded), stop early rather than stepping a dead episode.
+                self._ram = ram
+                self._info = info
+                self._lives = info.get("lives")
+                if terminated or truncated:
+                    break
+
         return self._observation()
 
     def step(self, action: ActionSpec) -> StepResult:

@@ -44,3 +44,12 @@ extra:
   action_repeat: 3
   score_scale: 30.0        # max single-invader value; keeps per-step reward <= ~1
   life_loss_penalty: -0.5
+  # Mnih et al. 2015 DQN eval protocol: random no-op starts, seeded per
+  # episode (k = f(seed), never wall-clock). Measured 2026-07-11
+  # (spaceinv-350m-v2): with repeat_action_probability=0.0, ALE Space
+  # Invaders is seed-invariant at reset -- every one of the 100 eval seeds
+  # played the identical initial board, so a warm-started model replayed
+  # one memorized script (mean score exactly 5.1667 across two
+  # generations) and self-training data collapsed to copies of it. Random
+  # no-op starts make eval seeds genuinely distinct games.
+  noop_start_max: 30

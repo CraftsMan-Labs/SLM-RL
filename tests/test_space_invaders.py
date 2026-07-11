@@ -152,6 +152,61 @@ def test_vector_obs_length_and_range():
     assert all(0.0 <= v <= 1.0 for v in vec)
 
 
+def _cfg_with_noop(noop_start_max: int):
+    extra = dict(CFG.extra)
+    extra["noop_start_max"] = noop_start_max
+    return CFG.model_copy(update={"extra": extra})
+
+
+def test_noop_start_makes_different_seeds_diverge_at_reset():
+    # Motivation (measured 2026-07-11, run spaceinv-350m-v2): with
+    # repeat_action_probability=0.0, ALE Space Invaders is seed-invariant at
+    # reset -- confirmed on the pre-change adapter (stash-style probe):
+    # reset(seed=1) and reset(seed=2) produced the IDENTICAL state_hash
+    # (f0b0916d521bdb1c for both). Random no-op starts (Mnih et al. 2015 DQN
+    # eval protocol), seeded per episode, fix this: different seeds must now
+    # diverge at reset.
+    cfg = _cfg_with_noop(30)
+
+    def reset_hash(seed):
+        game = get_game("space-invaders")(cfg)
+        game.reset(seed=seed)
+        return game.state_hash()
+
+    assert reset_hash(1) != reset_hash(2)
+
+
+def test_noop_start_same_seed_reproducible():
+    # CODING_GUIDELINE Sec 1.4: same seed -> byte-identical decisions, even
+    # with the noop-start RNG in play (k = f(seed) is deterministic).
+    cfg = _cfg_with_noop(30)
+
+    def reset_hash(seed):
+        game = get_game("space-invaders")(cfg)
+        game.reset(seed=seed)
+        return game.state_hash()
+
+    assert reset_hash(7) == reset_hash(7)
+
+
+def test_noop_start_disabled_matches_no_key_present():
+    # New knobs default to "current behavior unchanged" (CODING_GUIDELINE
+    # Sec 2): noop_start_max=0 (explicit) must produce the exact same reset
+    # state as a config that omits the key entirely.
+    # yaml now has noop_start_max: 30, so build a variant that omits the key
+    extra_no_key = {k: v for k, v in CFG.extra.items() if k != "noop_start_max"}
+    cfg_absent = CFG.model_copy(update={"extra": extra_no_key})
+    cfg_zero = _cfg_with_noop(0)
+
+    def reset_hash(cfg, seed):
+        game = get_game("space-invaders")(cfg)
+        game.reset(seed=seed)
+        return game.state_hash()
+
+    for seed in (0, 1, 2):
+        assert reset_hash(cfg_absent, seed) == reset_hash(cfg_zero, seed)
+
+
 def test_episode_runner_integration_random_agent_two_seeds(tmp_path):
     # Records written, no crash; the game itself always reports a "score:"
     # outcome when it terminates/truncates on its own timeline (max_turns).
