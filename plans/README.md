@@ -75,3 +75,4 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 | 010 | Live game screen (deterministic frame replay in webui) | P1 | M | 007, 008 | DONE |
 | 011 | Vision-model play: LFM2.5-VL-450M reads frames | P1 | L | 008, 010 | PLANNED-NEXT (not yet written) |
 | 012 | CleanRL DQN teacher over RAM bytes (train-dqn CLI, Q-rationales) | P1 | L | 008, 009 | DONE (1578210) |
+| 013 | Workshop playground (knobs + reward-code tab + scoreboard + evolve launcher) | P1 | L | 007, 008, 012 | DONE (028284e) |
