@@ -65,3 +65,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
   the Gymnasium contract (D1); `bridges/gym_adapter.py` remains the planned
   integration point for external envs. Patterns were adopted (vectorization,
   replay), not the frameworks.
+
+## Batch 2 (2026-07-11, user request: Space Invaders via Gymnasium)
+
+| Plan | Title | Priority | Effort | Depends on | Status |
+|------|-------|----------|--------|------------|--------|
+| 008 | Space Invaders via Gymnasium/ALE (RAM -> text) | P1 | L | — | TODO |
+| 009 | Heuristic Space Invaders teacher + warm start | P1 | M | 008 | PLANNED-NEXT (not yet written) |
