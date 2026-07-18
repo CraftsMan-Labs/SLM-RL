@@ -1,0 +1,55 @@
+# First ALE game (plan 008). Score game: gate compares mean_score, not
+# win_rate. Atari legitimately repeats actions (hold LEFT, spam FIRE), so
+# the doom-loop thresholds are much looser than board games'.
+max_turns: 2000          # Deep headroom, not a cap: 12/1000 teacher episodes (its BEST, 610-695 pts) hit the old 400 bound (measured 2026-07-11). Weak play still exits early via death or the 240-decision stagnation guard.
+                         # over (all lives lost) or monitor stagnation truncation.
+                         # Measured 2026-07-11 (15 teacher episodes, stagnation
+                         # monitor disabled): uncapped natural death range is
+                         # 87-316 decisions, median 152 -- 400 sits above that
+                         # observed range.
+eval_episodes: 100
+eval_seeds_start: 10000
+monitor:
+  interventions: [reflect, truncate]
+  # In a dense-score game, repetition-while-scoring is legitimate strategy
+  # (holding a travel direction, camping with FIRE); the true doom-loop
+  # guard is reward_stagnation_window below, which already ejects
+  # repeat-spammers who aren't scoring. Repetition thresholds must
+  # therefore sit ABOVE what competent play produces at natural episode
+  # length. Measured 2026-07-11 (heuristic teacher, agent seeds 0+1 x env
+  # seeds 0-19, max_turns=400, monitor bypassed): max identical-action
+  # streak 44 (p95 29.8); max trailing n-gram repeats 22 at n=2 (p95 14.8;
+  # streaks dominate the n-gram detector: a 44-streak is 22 copies of a
+  # constant 2-gram). Thresholds set to ~2x the observed max.
+  action_repeat_threshold: 88     # 2 x measured max streak (44)
+  ngram_loop_threshold: 44        # 2 x measured max 2-gram repeats (22)
+  state_revisit_threshold: 6
+  # Space Invaders reward is sparse (aim-dependent hits), so legitimate
+  # play has long scoreless stretches. Measured 2026-07-11 (same
+  # 40-episode harness as above), each episode's max scoreless-decision
+  # streak -- the exact quantity the detector counts (resets only on
+  # shaped reward > 1e-9; life-loss penalties do NOT reset it) -- was
+  # max 120, p95 116.8, median 53.5. The previous window (40, itself
+  # loosened from the Mastermind-tuned default of 15 in plan 008) thus
+  # flagged the MAJORITY of competent teacher episodes at natural
+  # episode length, which is fatal to the warm start: one reflect marks
+  # the whole episode dirty in sft_export.select_episodes (dirty()
+  # excludes on ANY intervention), discarding the best demonstrations
+  # from SFT. Window set to 2x the observed max. The guard still ejects
+  # never-scoring players -- they hit any finite window -- just ~6x
+  # later (~240 decisions instead of ~40), bounded by max_turns.
+  reward_stagnation_window: 240   # 2 x measured max scoreless streak (120)
+extra:
+  env_id: ALE/SpaceInvaders-v5
+  action_repeat: 3
+  score_scale: 30.0        # max single-invader value; keeps per-step reward <= ~1
+  life_loss_penalty: -0.5
+  # Mnih et al. 2015 DQN eval protocol: random no-op starts, seeded per
+  # episode (k = f(seed), never wall-clock). Measured 2026-07-11
+  # (spaceinv-350m-v2): with repeat_action_probability=0.0, ALE Space
+  # Invaders is seed-invariant at reset -- every one of the 100 eval seeds
+  # played the identical initial board, so a warm-started model replayed
+  # one memorized script (mean score exactly 5.1667 across two
+  # generations) and self-training data collapsed to copies of it. Random
+  # no-op starts make eval seeds genuinely distinct games.
+  noop_start_max: 30

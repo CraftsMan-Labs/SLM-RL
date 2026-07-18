@@ -1,0 +1,23 @@
+# Keep this list short: docs/ and plans/ stay IN the build context on
+# purpose (small, useful inside the image for workshop attendees).
+
+# Experiment/run data — always a host bind mount, never baked into a layer.
+runs/
+
+# Local tooling / VCS — irrelevant or sensitive inside the image.
+.venv/
+.git/
+.claude/
+
+# Vue frontend — built/run as its own image; keep Python context lean.
+web/node_modules/
+web/dist/
+
+# Build/test artifacts.
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+
+# Never ship an executor's scratch notes.
+note.txt

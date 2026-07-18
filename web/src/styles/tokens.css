@@ -1,0 +1,53 @@
+:root {
+  --bg: #000000;
+  --surface: #090909;
+  --fg: #ffffff;
+  --fg-2: #a6a6a6;
+  --muted: rgba(255, 255, 255, 0.6);
+  --meta: rgba(255, 255, 255, 0.4);
+  --border: rgba(0, 153, 255, 0.15);
+  --border-soft: rgba(255, 255, 255, 0.06);
+  --accent: #0099ff;
+  --accent-on: #ffffff;
+  --success: #16a34a;
+  --warn: #eab308;
+  --danger: #dc2626;
+  --font-display: "Syne", "GT Walsheim Medium", -apple-system, sans-serif;
+  --font-body: "Inter", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 32px;
+  --text-3xl: clamp(2.5rem, 6vw, 3.875rem);
+  --text-4xl: clamp(3.25rem, 10vw, 5.5rem);
+  --leading-body: 1.35;
+  --leading-tight: 0.95;
+  --tracking-display: -0.05em;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --section-y: clamp(60px, 12vw, 120px);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 9999px;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised:
+    0 0.5px 0 0.5px rgba(255, 255, 255, 0.1),
+    0 10px 30px rgba(0, 0, 0, 0.25);
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max: 1120px;
+  --frosted: rgba(255, 255, 255, 0.1);
+}

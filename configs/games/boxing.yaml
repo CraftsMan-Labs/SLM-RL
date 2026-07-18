@@ -1,0 +1,30 @@
+# Boxing via ALE (plan 026 Phase B). Score game: gate compares mean_score,
+# not win_rate. Score is signed (player punches minus opponent punches);
+# the hold-UPFIRE teacher loses to the CPU boxer (mean ~-25) but still
+# produces legal, monitor-clean demos for reject_sft warm start.
+# Training path: reject_sft warm-start then GRPO (hardware tiers → transformers).
+max_turns: 2500          # Headroom: measured natural episode length (plan
+                         # 026 probe, hold-UPFIRE, noop_start_max=30, seeds
+                         # 0-9, action_repeat=1, monitor bypassed) is
+                         # 1762-1781 decisions. 2500 sits ~1.4x above the
+                         # observed max.
+eval_episodes: 100
+eval_seeds_start: 10000
+monitor:
+  interventions: [reflect, truncate]
+  # Active doom-loop thresholds for DQN / SFT play (not the old hold-UPFIRE
+  # teacher). Holding one stick/punch for hundreds of decisions is a stuck
+  # policy; 3000 (> max_turns) used to disable this detector entirely and
+  # is the wrong default for workshop RL. Floor is 3 (schema / knobs min).
+  action_repeat_threshold: 160
+  ngram_loop_threshold: 80
+  state_revisit_threshold: 6
+  # Measured 2026-07 (same harness): max scoreless-decision streak 478.
+  # Window set to ~2x the observed max.
+  reward_stagnation_window: 960    # 2 x measured max scoreless streak (478)
+extra:
+  env_id: ALE/Boxing-v5
+  action_repeat: 1
+  score_scale: 2.0         # max |single-punch| reward observed was 2
+  life_loss_penalty: 0.0   # Boxing has no lives; punches arrive as +/- reward
+  noop_start_max: 30

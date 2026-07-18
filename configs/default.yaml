@@ -1,0 +1,50 @@
+# Run defaults. Precedence: this file -> configs/games/<game>.yaml ->
+# user YAML (--config) -> CLI flags.
+run_id: default
+home: ./runs
+game: boxing
+generations: 2
+seed: 0
+max_context_tokens: 2048   # 8GB budget rule: observation renderers stay small
+
+train:
+  strategy: reject_sft     # overridden by the resolved hardware tier
+  lora_rank: 16
+  lora_alpha: 32
+  learning_rate: 5.0e-5
+  group_size: 8
+  kl_beta: 0.02
+  entropy_floor: 0.05   # healthy short-completion entropy ~0.1-0.3; collapse ~0.002
+  entropy_bonus: 0.01
+  max_completion_tokens: 256
+  grpo_max_steps: null     # null = full epochs; playground overrides to 24 (~20 min Docker CPU)
+  grpo_max_prompts: 512    # decision-step cap before GRPO; playground overrides to 32
+  episodes_per_generation: 200
+  selection_quantile: 0.25
+  exclude_monitor_flagged: true
+  max_duplicate_action_sequences: 3
+  replay_generations: 3   # train on rollouts from the last N generations; 1 = current behavior
+  win_turn_cap: 0            # drop wins longer than this many steps; 0 = disabled
+  sft_win_final_dup: 1       # write a win's final decision pair this many times; 1 = disabled
+  rollout_batch_size: 1      # K episodes per generate() call; safe default (8GB/llama.cpp tiers stay serial).
+                             # CUDA tiers (transformers/vLLM) can set 16 for much faster rollout/eval.
+
+gate:
+  min_improvement: 0.01   # ~2 sigma on the 500-episode suite; 0.02 blocked a real 0%->1.6% warm start (hybrid-350m, Jul 2026)
+  max_intervention_rate_ratio: 1.1
+  max_invalid_rate: 0.05
+  min_mean_entropy: 0.2
+  max_consecutive_failures: 2
+  stub_primary: -1.9      # skipped base / imported-SFT eval prior (real boxing SFT ~-0.9)
+
+dataset_url: null            # public HF dataset pack URL/id; set → skip live teacher warm-start
+dqn_url: null                # optional public HF URL/id for dqn.pt (Atari)
+adapter_url: null            # public HF *model* repo with adapter/ (published SFT LoRA)
+
+teacher:                     # classical-teacher seams (HYBRID_RL.md, D11)
+  pruner: false              # consistent-candidate menu pruning during rollout
+  pruner_top_k: 10
+  pruner_fraction: 0.5       # fraction of rollout episodes pruned; rest stay format-mode
+  warmstart_episodes: 1000   # teacher episodes for the gen-1 warm start (engine speed)
+  eval_pruned_episodes: 100  # with-pruner side metric; 0 disables; never gated
+  dqn_checkpoint: null       # path to a trained DQN teacher checkpoint (slm-rl train-dqn); null = heuristic/solver teacher

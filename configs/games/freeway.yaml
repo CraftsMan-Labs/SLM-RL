@@ -1,0 +1,50 @@
+# Freeway via ALE (plan 016). Score game: gate compares mean_score, not
+# win_rate. Score (crossing count) is always non-negative. Episodes are
+# fixed-duration (a 2:16 game timer), not life-limited.
+max_turns: 1500          # Headroom, not a cap: Freeway episodes are
+                         # fixed-duration (the ALE 2:16 game timer), not
+                         # life-limited. Measured 2026-07 (plan 016 probe,
+                         # teacher:freeway_crosser, agent seed 0, 30 eval
+                         # seeds 10000-10029, action_repeat=3, monitor
+                         # bypassed): natural episode length 674-682
+                         # decisions. 1500 sits >2x above the observed max
+                         # (comfortably above the timer at this
+                         # action_repeat, per plan 016's "config quirk"
+                         # note), while still finite.
+eval_episodes: 100
+eval_seeds_start: 10000
+monitor:
+  interventions: [reflect, truncate]
+  # Measured 2026-07 (same harness as above): the hold-UP teacher produces
+  # ONE unbroken action streak for the entire episode every time (max
+  # action streak observed 682 == max episode length observed 682; same for
+  # the max 2-gram streak, 681). This is the plan-016-predicted outcome for
+  # a competent Freeway teacher, not a hack: repetition detection is
+  # effectively off (thresholds sit above any reachable episode length at
+  # this action_repeat) because Freeway is legitimately won by pure
+  # persistent forward pressure, not by varying actions. Set safely above
+  # max_turns itself so the guard can never fire for holding one direction.
+  action_repeat_threshold: 2000     # > max_turns (1500); repetition
+                                     # detection is intentionally inert here.
+  ngram_loop_threshold: 2000        # same rationale.
+  state_revisit_threshold: 6
+  # Freeway reward is sparse (crossings are ~50+ decisions apart even for
+  # good play). Measured 2026-07 (same harness, 10 episodes via
+  # RolloutWriter, shaped_reward read back per decision): max
+  # scoreless-decision streak observed 52. Window set to 2x the observed
+  # max.
+  reward_stagnation_window: 104     # 2 x measured max scoreless streak (52)
+extra:
+  env_id: ALE/Freeway-v5
+  # Measured 2026-07 (plan 016 probe, teacher:freeway_crosser, 10 seeds
+  # each): action_repeat in {1,2,3,4} all produced an IDENTICAL mean_score
+  # (22.0, min 20.0, max 27.0) -- Freeway is timer-bound, not
+  # decision-bound, so coarser action_repeat just means fewer decisions
+  # over the same wall-clock game, not worse play. 3 chosen per the plan's
+  # "Freeway is coarse; 3-4 likely fine" guidance.
+  action_repeat: 3
+  score_scale: 1.0
+  life_loss_penalty: 0.0   # Freeway has no lives concept -- getting hit by
+                           # a car knocks the chicken back but never ends
+                           # the episode.
+  noop_start_max: 30

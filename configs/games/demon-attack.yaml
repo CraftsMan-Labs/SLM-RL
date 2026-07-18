@@ -1,0 +1,27 @@
+# Demon Attack via ALE (plan 026 Phase B). Score game: gate compares
+# mean_score, not win_rate. Training path: reject_sft only (same as the
+# rest of the ALE pack).
+max_turns: 2000          # Headroom: teacher episodes often hit lives-out
+                         # before the timer; 800-decision probe cap was not
+                         # a natural death for every seed. 2000 matches the
+                         # Space Invaders headroom convention.
+eval_episodes: 100
+eval_seeds_start: 10000
+monitor:
+  interventions: [reflect, truncate]
+  # Measured 2026-07 (tracker teacher, noop_start_max=30, action_repeat=1,
+  # 8 seeds, 800-decision cap): max identical-action streak 147; max
+  # scoreless streak 222. Thresholds ~2x. (ar=2 had higher mean score but
+  # much wider variance -- ar=1 shipped for stabler demos.)
+  action_repeat_threshold: 300     # 2 x measured max streak (147)
+  ngram_loop_threshold: 300
+  state_revisit_threshold: 6
+  reward_stagnation_window: 450    # 2 x measured max scoreless streak (222)
+extra:
+  env_id: ALE/DemonAttack-v5
+  # Measured 2026-07: tracker mean ~129 at action_repeat=1 (min 90, max
+  # 175, 8 seeds); ar=2 mean ~154 but min 30. Prefer stabler ar=1.
+  action_repeat: 1
+  score_scale: 10.0        # early-wave hit value observed as +10
+  life_loss_penalty: -0.5
+  noop_start_max: 30

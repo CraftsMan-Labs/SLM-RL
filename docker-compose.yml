@@ -1,0 +1,160 @@
+# Hot-reload stack: Python playground API + Vue (Vite HMR).
+#
+#   docker compose up --build
+#   open http://localhost:5173/
+#
+# Edit ./web (Vite HMR) or ./slm_rl|./configs (API process restart) on the
+# host — no image rebuild needed. For dependency/Dockerfile changes that
+# need a rebuild, use: docker compose watch
+#
+# Port binds omit 127.0.0.1 on purpose: OrbStack (and some Docker Desktop
+# setups) break same-port host binds like 127.0.0.1:5173:5173 — Mac
+# localhost fails while the container IP still works. Binding 0.0.0.0
+# restores localhost; turn off "Expose ports to LAN" in OrbStack if needed.
+#
+# Memory: GRPO needs ~5–6 GB. Prefer `make` — it picks OrbStack vs Docker and
+# sizes the VM so mem_limit is real. Manual: OrbStack/Docker Desktop → Memory ≥8 GB.
+# Overrides: MEM_LIMIT / MEMSWAP_LIMIT (see Makefile).
+
+services:
+  playground:
+    build:
+      context: .
+      target: playground
+    image: slm-rl:playground
+    init: true  # reap rollout/evolve subprocess zombies
+    mem_limit: ${MEM_LIMIT:-8g}
+    memswap_limit: ${MEMSWAP_LIMIT:-12g}
+    ports:
+      - "8780:8780"
+    volumes:
+      # Live-mount source so watchfiles can restart on Python edits
+      - ./slm_rl:/app/slm_rl
+      - ./configs:/app/configs
+      - ./runs:/app/runs
+      - hf-cache:/home/slm/.cache/huggingface
+      - uv-cache:/home/slm/.cache/uv
+    # Restart playground when slm_rl/ or configs/ change (uvx = ephemeral tool).
+    # WARNING: a restart can kill in-flight theater/evolve children if the
+    # kernel reaps the session — avoid editing ./slm_rl during Theater A/B.
+    command:
+      - uvx
+      - watchfiles
+      - --filter
+      - python
+      # ponytail: no --debounce (watchfiles CLI doesn't support it)
+      - slm-rl playground --host 0.0.0.0 --port 8780
+      - /app/slm_rl
+      - /app/configs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - UV_CACHE_DIR=/home/slm/.cache/uv
+      # Optional host .env fallback; workshop path prefers profile.json token
+      # forwarded into evolve/theater/bake subprocesses by the playground API.
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+      # Bind mounts on macOS/OrbStack often miss inotify — force polling.
+      - WATCHFILES_FORCE_POLLING=true
+      # OrbStack injects NO_PROXY with IPv6 CIDRs (e.g. fd07:b51a:cc66:f0::/64).
+      # httpx (huggingface_hub) misparses those as ports → InvalidURL during
+      # Llama.from_pretrained / HF downloads. Direct egress; no proxy needed.
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - ALL_PROXY=
+      - http_proxy=
+      - https_proxy=
+      - all_proxy=
+      - NO_PROXY=*
+      - no_proxy=*
+    develop:
+      watch:
+        - path: ./pyproject.toml
+          action: rebuild
+        - path: ./uv.lock
+          action: rebuild
+        - path: ./Dockerfile
+          action: rebuild
+        - path: ./docker-entrypoint.sh
+          action: rebuild
+
+  web:
+    build:
+      context: ./web
+    image: slm-rl:web
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    environment:
+      # Browser hits :5173; Vite proxies API calls to the playground service.
+      VITE_API_PROXY: http://playground:8780
+      # HMR websocket target for the host browser (not the container IP).
+      VITE_HMR_HOST: localhost
+      # Reliable file watching on Docker Desktop / OrbStack (macOS).
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+      WATCHPACK_POLLING: "true"
+    depends_on:
+      - playground
+    develop:
+      watch:
+        - path: ./web/package.json
+          action: rebuild
+        - path: ./web/package-lock.json
+          action: rebuild
+        - path: ./web/Dockerfile
+          action: rebuild
+
+  playground-gpu:
+    profiles: ["gpu"]
+    build:
+      context: .
+      target: cuda
+    image: slm-rl:cuda
+    init: true
+    gpus: all
+    ports:
+      - "8781:8780"
+    volumes:
+      - ./slm_rl:/app/slm_rl
+      - ./configs:/app/configs
+      - ./runs:/app/runs
+      - hf-cache:/home/slm/.cache/huggingface
+      - uv-cache:/home/slm/.cache/uv
+    command:
+      - uvx
+      - watchfiles
+      - --filter
+      - python
+      - slm-rl playground --host 0.0.0.0 --port 8780
+      - /app/slm_rl
+      - /app/configs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - UV_CACHE_DIR=/home/slm/.cache/uv
+      - WATCHFILES_FORCE_POLLING=true
+      # Same OrbStack/httpx NO_PROXY IPv6 trap as playground (see above).
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - ALL_PROXY=
+      - http_proxy=
+      - https_proxy=
+      - all_proxy=
+      - NO_PROXY=*
+      - no_proxy=*
+    develop:
+      watch:
+        - path: ./pyproject.toml
+          action: rebuild
+        - path: ./uv.lock
+          action: rebuild
+        - path: ./Dockerfile
+          action: rebuild
+        - path: ./docker-entrypoint.sh
+          action: rebuild
+
+volumes:
+  hf-cache: {}
+  uv-cache: {}
+  web_node_modules: {}

@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slm-rl"
+version = "0.1.0"
+description = "A self-improving game gymnasium for small language models: play, collect, fine-tune, improve."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "psutil>=5.9",
+    "huggingface_hub>=0.24",
+]
+
+[project.optional-dependencies]
+# Heavy dependencies are extras on purpose: the core package must import and run
+# (play / datagen / eval) on an 8GB machine with none of these installed.
+cuda = ["torch", "transformers>=5.0", "trl>=1.8", "peft", "bitsandbytes", "datasets", "accelerate", "pyarrow", "pillow", "torchvision"]
+vllm = ["vllm"]
+mac = ["mlx-lm; sys_platform == 'darwin'"]
+# The any-8gb tier's transformers + GRPO/SFT trainer, CPU-only: the cuda
+# extra minus bitsandbytes (CUDA-only quantization lib, no CPU build).
+# torch here MUST resolve the CPU-only wheel (see [tool.uv.sources] /
+# [tool.uv.index] below) -- plain PyPI torch bundles ~1.2GB of NVIDIA CUDA
+# libraries even on a machine with no GPU, which blows the 8GB budget.
+cpu-train = ["torch", "transformers>=5.0", "trl>=1.8", "peft", "datasets", "accelerate", "pyarrow"]
+atari = ["ale-py", "gymnasium"]
+openenv = ["openenv>=0.4,<0.5"]
+dashboard = ["streamlit", "pandas", "pyarrow"]
+dev = ["pytest>=8.0", "pytest-cov"]
+
+[project.scripts]
+slm-rl = "slm_rl.cli:app"
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv]
+# cuda and cpu-train both declare bare `torch`, resolved from different
+# indexes below -- uv's "conflicting extras" mechanism (its documented
+# per-extra-accelerator pattern) is required so it forks the resolution
+# instead of unifying the two into one shared `torch` pin (which silently
+# downgraded the CUDA extra's linux resolution to the CPU-only wheel when
+# tried with a plain `marker = "extra == ...`" source, caught in review —
+# never install both extras in the same environment; they are mutually
+# exclusive on purpose).
+conflicts = [
+  [
+    { extra = "cuda" },
+    { extra = "cpu-train" },
+  ],
+]
+
+[tool.uv.sources]
+# Extra-conditional torch source (uv's documented "configuring accelerators
+# with optional dependencies" pattern): cuda keeps resolving plain PyPI
+# torch (unchanged resolution, GPU wheels); cpu-train pins the CPU-only
+# wheel from PyTorch's own index so it never pulls CUDA/NVIDIA packages.
+# `explicit = true` above means this index is only used where named here,
+# never as a fallback for other deps.
+torch = [
+  { index = "pytorch-cpu", extra = "cpu-train" },
+]
+
+[project.entry-points."slm_rl.games"]
+# Workshop keepers only (four Atari games).
+space-invaders = "slm_rl.games.atari.space_invaders:SpaceInvadersGame"
+freeway = "slm_rl.games.atari.freeway:FreewayGame"
+boxing = "slm_rl.games.atari.boxing:BoxingGame"
+demon-attack = "slm_rl.games.atari.demon_attack:DemonAttackGame"
+
+[tool.hatch.build.targets.wheel]
+packages = ["slm_rl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,36 @@
+# Hardware tier table. First matching tier wins — ordered most -> least
+# capable, ending with the universal 8GB floor (no match conditions).
+# Detection (slm_rl/platform/hardware.py) resolves against this table only;
+# models are never hardcoded. Override with --tier/--model/--backend.
+tiers:
+  - name: cuda-24gb
+    min_cuda_vram_gb: 20
+    model: google/gemma-4-E2B-it   # ponytail: unverified model id — swap if load fails
+    backend: transformers
+    train: grpo
+    quantization: null
+
+  - name: cuda-8-16gb
+    min_cuda_vram_gb: 6
+    model: LiquidAI/LFM2.5-1.2B-Instruct
+    backend: transformers          # bf16; use transformers-4bit + quantization q4 only if OOM
+    train: grpo
+    quantization: null
+
+  - name: mac-16gb
+    os: darwin
+    min_ram_gb: 15
+    # Prefer transformers on Apple Silicon so GRPO/SFT share one trainer stack
+    # (MPS fp32). mlx remains available via --backend mlx for inference-only.
+    model: LiquidAI/LFM2.5-1.2B-Instruct
+    backend: transformers
+    train: grpo
+    quantization: null
+
+  # Universal floor: any machine with ~8GB RAM, no GPU required.
+  # Same transformers + GRPO stack as mac/CUDA (fp32 on CPU/MPS; bf16 on CUDA).
+  - name: any-8gb
+    model: LiquidAI/LFM2.5-350M   # use LFM2.5-VL-450M for vision games
+    backend: transformers
+    train: grpo
+    quantization: null
