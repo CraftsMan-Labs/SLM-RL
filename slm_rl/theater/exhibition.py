@@ -56,6 +56,24 @@ def _write_status(theater_root: Path, **fields: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def mark_theater_ui_stopped(theater_root: Path) -> None:
+    """Stamp status.json when Stop Theater kills the subprocess mid-run.
+
+    Without this, phase stays "base" / "champion" forever and the A/B UI
+    keeps labeling the unfinished episode LIVE even though nothing is playing.
+    No-op if theater/ was never created.
+    """
+    theater_root = Path(theater_root)
+    if not theater_root.is_dir():
+        return
+    _write_status(
+        theater_root,
+        phase="failed",
+        error="stopped via UI",
+        message="Theater stopped. Click Start Theater to retry.",
+    )
+
+
 def _play_side(
     *,
     game_cls,

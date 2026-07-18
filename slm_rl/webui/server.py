@@ -335,8 +335,11 @@ def _stream_frames(
     except (BrokenPipeError, ConnectionResetError):
         pass
     finally:
+        # Client abort / panel close: free the replay slot quickly. The feeder
+        # is a daemon thread and exits once `stop` is set; don't hold the
+        # semaphore for a long join or the next Watch/theater screen 503s.
         stop.set()
-        feeder.join(timeout=2.0)
+        feeder.join(timeout=0.25)
 
 
 def _make_handler(

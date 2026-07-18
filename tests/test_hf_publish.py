@@ -10,8 +10,36 @@ from types import SimpleNamespace
 
 import pytest
 
-from slm_rl.datagen.hf_publish import publish_experiment
+from slm_rl.datagen.hf_publish import normalize_publish_slug, publish_experiment
 from slm_rl.orchestrator.registry import ModelRegistry
+
+
+def test_normalize_publish_slug_defaults_and_strips_owner():
+    assert normalize_publish_slug(None, experiment="boxing-run") == "slm-rl-boxing-run"
+    assert normalize_publish_slug("  ada/my-lora  ", experiment="x") == "my-lora"
+    with pytest.raises(ValueError, match="invalid repo name"):
+        normalize_publish_slug("bad name", experiment="x")
+    with pytest.raises(ValueError, match="model id only"):
+        normalize_publish_slug("my-lora-data", experiment="x")
+
+
+def test_publish_custom_repo_name(tmp_path: Path, monkeypatch):
+    _patch_hub(monkeypatch)
+    run_dir = tmp_path / "pg-x"
+    _write_champion_run(run_dir, champ_gen=1)
+
+    result = publish_experiment(
+        token="hf_realtoken1234",
+        username="ada",
+        experiment="x",
+        game="boxing",
+        run_dir=run_dir,
+        repo_name="my-boxing-champ",
+    )
+    assert result.model_repo == "ada/my-boxing-champ"
+    assert result.dataset_repo == "ada/my-boxing-champ-data"
+    assert result.model_error is None
+    assert result.dataset_error is None
 
 
 def _write_champion_run(run_dir: Path, champ_gen: int = 1) -> None:

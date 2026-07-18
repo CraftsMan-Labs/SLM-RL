@@ -27,8 +27,39 @@ constructed with the token and is omitted (plan 025 G6). Errors surface
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+# HF repo id slug (no owner/). Allow letters/digits/._- ; strip owner if pasted.
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,94}[A-Za-z0-9])?$")
+
+
+def normalize_publish_slug(repo_name: str | None, *, experiment: str) -> str:
+    """Return the model repo slug (no `owner/`). Dataset is `{slug}-data`."""
+    raw = (repo_name or "").strip()
+    if not raw:
+        return f"slm-rl-{experiment}"
+    if "/" in raw:
+        raw = raw.rstrip("/").rsplit("/", 1)[-1]
+    raw = raw.strip()
+    if not _REPO_SLUG_RE.match(raw):
+        raise ValueError(
+            f"invalid repo name {raw!r}: use 1–96 chars of letters, digits, "
+            "., _, or - (no spaces); owner/ is filled from your HF token"
+        )
+    if raw.endswith("-data"):
+        raise ValueError(
+            "repo name should be the model id only — we publish the dataset as "
+            f"{raw}-data automatically"
+        )
+    return raw
+
+
+def publish_repo_ids(username: str, experiment: str, repo_name: str | None = None) -> tuple[str, str]:
+    """(model_repo_id, dataset_repo_id) under the attendee's username."""
+    slug = normalize_publish_slug(repo_name, experiment=experiment)
+    return f"{username}/{slug}", f"{username}/{slug}-data"
 
 
 @dataclass
@@ -63,18 +94,19 @@ def _render_model_card(
     champion_generation: int,
     gate_metrics: dict,
     repo_id: str | None = None,
+    dataset_repo: str | None = None,
 ) -> str:
     """HF model card with YAML metadata + transformers/PEFT load snippet."""
     base = base_model or "LiquidAI/LFM2.5-350M"
     title = _game_title(game)
     hub_id = repo_id or f"BLANK/slm-rl-{game}"
     owner = hub_id.split("/", 1)[0] if "/" in hub_id else "BLANK"
-    # Workshop packs use game id; attendee publish uses experiment + "-data".
+    # Workshop packs use game id; attendee publish pairs model + `{slug}-data`.
     if owner == "BLANK":
-        dataset_id = f"BLANK/slm-rl-{game}"
+        dataset_id = dataset_repo or f"BLANK/slm-rl-{game}"
         dqn_id = f"BLANK/slm-rl-{game}-dqn"
     else:
-        dataset_id = f"{owner}/slm-rl-{experiment}-data"
+        dataset_id = dataset_repo or f"{owner}/slm-rl-{experiment}-data"
         dqn_id = None
     eval_metrics = gate_metrics.get("eval", {})
     gate = gate_metrics.get("gate", {})
@@ -205,26 +237,36 @@ Trained with [SLM-RL](https://github.com/CraftsMan-Labs/SLM-RL).
     return yaml + body
 
 
-def _dataset_side(*, token: str, username: str, experiment: str, run_dir: Path) -> tuple[str | None, str | None]:
+def _dataset_side(
+    *, token: str, username: str, experiment: str, run_dir: Path, dataset_repo: str,
+) -> tuple[str | None, str | None]:
     """Returns (repo_id, error)."""
     from slm_rl.datagen.hf_push import push_generation
 
-    repo_id = f"{username}/slm-rl-{experiment}-data"
     gen_dirs = sorted(run_dir.glob("generations/gen_*"))
     if not gen_dirs:
-        return repo_id, "no generations found to publish"
+        return dataset_repo, "no generations found to publish"
 
     try:
         for gen_dir in gen_dirs:
             gen_num = int(gen_dir.name.split("_")[1])
-            push_generation(repo_id, experiment, gen_num, gen_dir, private=False, token=token)
+            push_generation(
+                dataset_repo, experiment, gen_num, gen_dir, private=False, token=token,
+            )
     except Exception as e:  # noqa: BLE001 - any hub/network error is reported, not fatal to the model side
-        return repo_id, str(e)
-    return repo_id, None
+        return dataset_repo, str(e)
+    return dataset_repo, None
 
 
 def _model_side(
-    *, token: str, username: str, experiment: str, game: str, run_dir: Path
+    *,
+    token: str,
+    username: str,
+    experiment: str,
+    game: str,
+    run_dir: Path,
+    model_repo: str,
+    dataset_repo: str,
 ) -> tuple[str | None, str | None, str | None]:
     """Returns (repo_id, error, message)."""
     from slm_rl.datagen.hf_push import create_and_upload_folder
@@ -259,11 +301,12 @@ def _model_side(
 
     from huggingface_hub import HfApi
 
-    repo_id = f"{username}/slm-rl-{experiment}"
+    repo_id = model_repo
     card = _render_model_card(
         game=game, experiment=experiment, base_model=base_model,
         champion_generation=champ_gen, gate_metrics=gate_metrics,
         repo_id=repo_id,
+        dataset_repo=dataset_repo,
     )
     try:
         api = HfApi(token=token)
@@ -282,19 +325,32 @@ def _model_side(
 
 
 def publish_experiment(
-    *, token: str, username: str, experiment: str, game: str, run_dir: Path
+    *,
+    token: str,
+    username: str,
+    experiment: str,
+    game: str,
+    run_dir: Path,
+    repo_name: str | None = None,
 ) -> PublishResult:
     """Publish both sides for one playground experiment. `run_dir` is the
     experiment's own run dir (`ExperimentDir.run_dir`); `token`/`username`
     come from the caller's loaded profile -- this function never reads a
-    profile itself and never falls back to an ambient token."""
+    profile itself and never falls back to an ambient token.
+
+    `repo_name` is the model repo slug (no owner/). Dataset is published as
+    `{slug}-data`. Default slug: `slm-rl-{experiment}`.
+    """
     run_dir = Path(run_dir)
+    model_repo_id, dataset_repo_id = publish_repo_ids(username, experiment, repo_name)
 
     model_repo, model_error, model_message = _model_side(
-        token=token, username=username, experiment=experiment, game=game, run_dir=run_dir,
+        token=token, username=username, experiment=experiment, game=game,
+        run_dir=run_dir, model_repo=model_repo_id, dataset_repo=dataset_repo_id,
     )
     dataset_repo, dataset_error = _dataset_side(
         token=token, username=username, experiment=experiment, run_dir=run_dir,
+        dataset_repo=dataset_repo_id,
     )
 
     return PublishResult(

@@ -208,3 +208,18 @@ def test_exhibition_viewer_reuse_iter_run_records_and_replay_frames(tmp_path, mo
     first_episode = records[0]["episode_id"]
     with pytest.raises(ReplayUnavailable):
         next(replay_frames(base_dir, first_episode))
+
+
+def test_mark_theater_ui_stopped_stamps_failed_phase(tmp_path: Path):
+    theater = tmp_path / "theater"
+    theater.mkdir()
+    (theater / "status.json").write_text(
+        json.dumps({"phase": "base", "episode": 1, "episodes": 4}) + "\n",
+        encoding="utf-8",
+    )
+    exhibition_mod.mark_theater_ui_stopped(theater)
+    data = json.loads((theater / "status.json").read_text(encoding="utf-8"))
+    assert data["phase"] == "failed"
+    assert data["error"] == "stopped via UI"
+    # Missing theater/ must not raise.
+    exhibition_mod.mark_theater_ui_stopped(tmp_path / "no-such-theater")

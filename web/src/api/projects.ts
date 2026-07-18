@@ -203,10 +203,18 @@ export function getTheaterScores(name: string) {
   )
 }
 
-export function publishProject(name: string) {
-  return api(`/api/experiments/${encodeURIComponent(name)}/publish`, {
+export type PublishResult = {
+  dataset_repo: string | null
+  dataset_error: string | null
+  model_repo: string | null
+  model_error: string | null
+  message: string | null
+}
+
+export function publishProject(name: string, repoName: string) {
+  return api<PublishResult>(`/api/experiments/${encodeURIComponent(name)}/publish`, {
     method: 'POST',
-    body: JSON.stringify({}),
+    body: JSON.stringify({ repo_name: repoName }),
   })
 }
 

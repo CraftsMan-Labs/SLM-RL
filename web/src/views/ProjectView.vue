@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/shell/AppShell.vue'
 import ProjectConfigAside from '@/components/projects/ProjectConfigAside.vue'
+import PublishModal from '@/components/projects/PublishModal.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import EvolvePanel from '@/components/watch/EvolvePanel.vue'
@@ -23,15 +24,17 @@ import {
   type KnobSchema,
   type Project,
 } from '@/api/projects'
+import { stopAllFrameStreams } from '@/composables/useFrameStream'
 import { useProfile } from '@/composables/useProfile'
 import { workshopDqnUrl, workshopPackUrl } from '@/lib/workshopHf'
 
 const route = useRoute()
 const router = useRouter()
-const { hasToken } = useProfile()
+const { hasToken, profile } = useProfile()
 
 const name = computed(() => String(route.params.name))
 const project = ref<Project | null>(null)
+const publishOpen = ref(false)
 const knobs = ref<KnobSchema[]>([])
 const knobValues = ref<Record<string, unknown>>({})
 const datasetUrl = ref('')
@@ -94,6 +97,13 @@ function closeOtherStudios(keep: 'evolve' | 'run' | 'theater') {
   if (keep !== 'run') runOpen.value = false
   if (keep !== 'theater') theaterOpen.value = false
 }
+
+// Opening/closing Run / Evolve / Theater unmounts LiveWatch (or the studio
+// screen). Abort every ALE replay immediately so the 8-slot cap never sticks
+// on a panel the user already left.
+watch(studioOpen, () => {
+  stopAllFrameStreams()
+})
 
 const meanLabel = computed(() => {
   const m = project.value?.mean_score
@@ -307,12 +317,41 @@ async function onStartTheater() {
   }
 }
 
-async function onPublish() {
+function openPublish() {
+  if (!hasToken.value) return
+  error.value = null
+  publishOpen.value = true
+}
+
+function formatPublishFlash(result: {
+  model_repo: string | null
+  dataset_repo: string | null
+  model_error: string | null
+  dataset_error: string | null
+  message: string | null
+}) {
+  const parts: string[] = []
+  if (result.model_repo && !result.model_error) {
+    parts.push(`model ${result.model_repo}`)
+  } else if (result.model_error) {
+    parts.push(`model failed: ${result.model_error}`)
+  }
+  if (result.dataset_repo && !result.dataset_error) {
+    parts.push(`dataset ${result.dataset_repo}`)
+  } else if (result.dataset_error) {
+    parts.push(`dataset failed: ${result.dataset_error}`)
+  }
+  if (result.message) parts.push(result.message)
+  return parts.length ? parts.join(' · ') : 'Published.'
+}
+
+async function onPublishConfirm(repoName: string) {
   error.value = null
   busy.value = true
   try {
-    const result = await publishProject(name.value)
-    flash(typeof result === 'object' ? JSON.stringify(result) : 'Published.')
+    const result = await publishProject(name.value, repoName)
+    flash(formatPublishFlash(result))
+    publishOpen.value = false
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Publish failed'
   } finally {
@@ -469,7 +508,7 @@ onUnmounted(() => {
           class="dock-quiet"
           :disabled="busy || !hasToken"
           :title="hasToken ? 'Publish to Hugging Face' : 'Add a Hugging Face token on the welcome screen to publish'"
-          @click="onPublish"
+          @click="openPublish"
         >
           Publish
         </button>
@@ -478,6 +517,15 @@ onUnmounted(() => {
 
     <p v-if="error" class="err" role="alert">{{ error }}</p>
     <p v-if="message" class="toast" role="status">{{ message }}</p>
+
+    <PublishModal
+      :open="publishOpen"
+      :project-name="name"
+      :hf-username="profile?.hf_username ?? null"
+      :busy="busy"
+      @close="publishOpen = false"
+      @confirm="onPublishConfirm"
+    />
 
     <RunPanel
       v-model:run-episodes="runEpisodes"

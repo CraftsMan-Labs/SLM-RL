@@ -627,6 +627,9 @@ def _make_handler(home: Path, default_game: str) -> type[BaseHTTPRequestHandler]
                 )
                 return
 
+            body = _read_body(self)
+            repo_name = (body.get("repo_name") or "").strip() or None
+
             with publish_locks_guard:
                 if publish_locks.get(name):
                     _write_json(self, 409, {"error": f"a publish for {name!r} is already running"})
@@ -652,10 +655,15 @@ def _make_handler(home: Path, default_game: str) -> type[BaseHTTPRequestHandler]
 
                 from slm_rl.datagen.hf_publish import publish_experiment
 
-                result = publish_experiment(
-                    token=profile.hf_token, username=profile.hf_username,
-                    experiment=name, game=_experiment_game(exp), run_dir=exp.run_dir,
-                )
+                try:
+                    result = publish_experiment(
+                        token=profile.hf_token, username=profile.hf_username,
+                        experiment=name, game=_experiment_game(exp), run_dir=exp.run_dir,
+                        repo_name=repo_name,
+                    )
+                except ValueError as exc:
+                    _write_json(self, 400, {"error": str(exc)})
+                    return
                 _write_json(self, 200, result.to_json())
             finally:
                 with publish_locks_guard:
@@ -802,6 +810,15 @@ def _make_handler(home: Path, default_game: str) -> type[BaseHTTPRequestHandler]
                 try:
                     with exp.log_path(log_kind).open("a", encoding="utf-8") as f:
                         f.write(f"\n[playground] stopped via UI ({kind})\n")
+                except OSError:
+                    pass
+            # Theater status.json otherwise stays phase=base forever → UI
+            # shows unfinished episodes as LIVE with no process behind them.
+            if "theater" in stopped:
+                try:
+                    from slm_rl.theater.exhibition import mark_theater_ui_stopped
+
+                    mark_theater_ui_stopped(exp.run_dir / "theater")
                 except OSError:
                     pass
             _write_json(self, 200, {"name": name, "stopped": stopped})

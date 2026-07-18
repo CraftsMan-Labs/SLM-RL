@@ -1,5 +1,13 @@
 import { onUnmounted, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
+/** Active frame-stream stop handles — closed panels call `stopAllFrameStreams`. */
+const activeStops = new Set<() => void>()
+
+/** Abort every in-flight ALE replay fetch (theater / watch / live stage). */
+export function stopAllFrameStreams() {
+  for (const stop of [...activeStops]) stop()
+}
+
 /**
  * Consume a multipart/x-mixed-replace PNG stream via fetch and paint each
  * part as a blob URL. Chromium often fails to update `<img src=multipart…>`
@@ -33,7 +41,7 @@ export function useFrameStream(url: MaybeRefOrGetter<string | null | undefined>)
 
   async function openResponse(streamUrl: string, signal: AbortSignal): Promise<Response> {
     let lastStatus = 0
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
       const res = await fetch(streamUrl, {
         signal,
@@ -41,9 +49,9 @@ export function useFrameStream(url: MaybeRefOrGetter<string | null | undefined>)
         cache: 'no-store',
       })
       lastStatus = res.status
-      if (res.status === 503 && attempt < 2) {
+      if (res.status === 503 && attempt < 4) {
         // Prior live/Watch stream may still be releasing its ALE slot.
-        await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)))
         continue
       }
       return res
@@ -175,6 +183,7 @@ export function useFrameStream(url: MaybeRefOrGetter<string | null | undefined>)
     const r = reader
     reader = null
     void r?.cancel().catch(() => undefined)
+    loading.value = false
   }
 
   function start(streamUrl: string) {
@@ -190,6 +199,8 @@ export function useFrameStream(url: MaybeRefOrGetter<string | null | undefined>)
         : msg
     })
   }
+
+  activeStops.add(stop)
 
   watch(
     () => toValue(url),
@@ -208,9 +219,10 @@ export function useFrameStream(url: MaybeRefOrGetter<string | null | undefined>)
   )
 
   onUnmounted(() => {
+    activeStops.delete(stop)
     stop()
     clearObjectUrl()
   })
 
-  return { frameSrc, loading, error }
+  return { frameSrc, loading, error, stop }
 }

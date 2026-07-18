@@ -5,6 +5,7 @@ import LivePill from '@/components/ui/LivePill.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import EpisodeCard from '@/components/watch/EpisodeCard.vue'
 import ScreenPanel from '@/components/watch/ScreenPanel.vue'
+import { stopAllFrameStreams } from '@/composables/useFrameStream'
 import { useWatchStream } from '@/composables/useWatchStream'
 
 const props = defineProps<{
@@ -27,14 +28,34 @@ const watchingId = ref<string | null>(null)
 const watchingGen = ref<number | null>(null)
 /** Bumped on every Watch screen click so replay always restarts from step 0. */
 const watchRestartToken = ref(0)
-/** Inline live stage in the phase guide (user can Close like Watch screen). */
-const liveScreenOpen = ref(true)
+/**
+ * Inline live stage in the phase guide (user can Close like Watch screen).
+ * Starts false and enables shortly after mount so a just-closed theater/studio
+ * can release its ALE replay slot before we open another.
+ */
+const liveScreenOpen = ref(false)
 const now = ref(Date.now())
 const evolveMetrics = ref<EvolveMetrics | null>(null)
 /** Avoid re-toasting the same dead state every poll. */
 const evolveDeadNotified = ref(false)
 let tick: ReturnType<typeof setInterval> | null = null
 let evolvePoll: ReturnType<typeof setInterval> | null = null
+let liveScreenArm: ReturnType<typeof setTimeout> | null = null
+
+function clearScreens() {
+  watchingId.value = null
+  watchingGen.value = null
+  liveScreenOpen.value = false
+  stopAllFrameStreams()
+}
+
+function armLiveScreen() {
+  if (liveScreenArm) clearTimeout(liveScreenArm)
+  liveScreenArm = setTimeout(() => {
+    liveScreenArm = null
+    liveScreenOpen.value = true
+  }, 400)
+}
 
 const runId = computed(() => (props.projectName ? `pg-${props.projectName}` : ''))
 
@@ -68,14 +89,13 @@ async function refreshEvolveMetrics() {
 watch(
   () => props.projectName,
   () => {
-    watchingId.value = null
-    watchingGen.value = null
+    clearScreens()
     watchRestartToken.value = 0
-    liveScreenOpen.value = true
     evolveMetrics.value = null
     evolveDeadNotified.value = false
     reset()
     void refreshEvolveMetrics()
+    armLiveScreen()
   },
 )
 
@@ -91,16 +111,20 @@ onMounted(() => {
   evolvePoll = setInterval(() => {
     void refreshEvolveMetrics()
   }, 2000)
+  armLiveScreen()
 })
 
 onUnmounted(() => {
   if (tick) clearInterval(tick)
   if (evolvePoll) clearInterval(evolvePoll)
+  if (liveScreenArm) clearTimeout(liveScreenArm)
+  clearScreens()
 })
 
 function onWatch(episodeId: string) {
   // One ALE replay stream at a time — close the inline live stage first.
   liveScreenOpen.value = false
+  stopAllFrameStreams()
   const ep = episodes.value.find((e) => e.id === episodeId)
   watchingId.value = episodeId
   watchingGen.value = ep?.generation ?? currentGen.value
@@ -110,16 +134,19 @@ function onWatch(episodeId: string) {
 function onCloseScreen() {
   watchingId.value = null
   watchingGen.value = null
+  stopAllFrameStreams()
 }
 
 function onCloseLiveScreen() {
   liveScreenOpen.value = false
+  stopAllFrameStreams()
 }
 
 function onShowLiveScreen() {
   // Prefer the inline stage over the side Watch panel (same slot budget).
   watchingId.value = null
   watchingGen.value = null
+  stopAllFrameStreams()
   liveScreenOpen.value = true
 }
 

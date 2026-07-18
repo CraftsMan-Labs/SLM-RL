@@ -5,6 +5,7 @@ import UiField from '@/components/ui/UiField.vue'
 import UiModal from '@/components/ui/UiModal.vue'
 import ScreenPanel from '@/components/watch/ScreenPanel.vue'
 import { getTheaterScores, type TheaterScores } from '@/api/projects'
+import { stopAllFrameStreams } from '@/composables/useFrameStream'
 import { useWatchStream, type EpisodeState } from '@/composables/useWatchStream'
 
 const props = defineProps<{
@@ -47,6 +48,8 @@ const {
 const watching = ref<{ side: 'base' | 'champion'; id: string; gen: number | null } | null>(
   null,
 )
+/** Close on the stage opts out of auto-follow until the user clicks Watch again. */
+const screenDismissed = ref(false)
 const watchRestartToken = ref(0)
 
 async function refreshScores() {
@@ -100,13 +103,30 @@ function sideLabel(label: string, side: TheaterScores['base']) {
   return `${label}: ${parts.join(' · ')}`
 }
 
+function epBadge(ep: EpisodeState): string {
+  if (ep.outcome) return ep.outcome
+  if (ep.terminated || ep.truncated) return 'done'
+  // Job dead / stopped mid-episode — never leave a forever-LIVE badge.
+  if (!props.theaterRunning) return 'stopped'
+  return 'live'
+}
+
 function onWatch(side: 'base' | 'champion', ep: EpisodeState) {
+  screenDismissed.value = false
   watching.value = { side, id: ep.id, gen: ep.generation }
   watchRestartToken.value += 1
 }
 
 function onCloseScreen() {
   watching.value = null
+  screenDismissed.value = true
+  stopAllFrameStreams()
+}
+
+function teardownStreams() {
+  watching.value = null
+  screenDismissed.value = true
+  stopAllFrameStreams()
 }
 
 function liveEpisode(side: 'base' | 'champion'): EpisodeState | null {
@@ -118,6 +138,8 @@ const baseLive = computed(() => liveEpisode('base'))
 const champLive = computed(() => liveEpisode('champion'))
 
 const autoFollow = computed(() => {
+  // Don't auto-open a screen for a corpse episode after Stop / crash.
+  if (!props.theaterRunning) return null
   const b = baseLive.value
   if (b && !b.terminated && !b.truncated) return { side: 'base' as const, ep: b }
   const c = champLive.value
@@ -125,11 +147,18 @@ const autoFollow = computed(() => {
   return null
 })
 
-const screenSide = computed(() => watching.value?.side ?? autoFollow.value?.side ?? null)
-const screenId = computed(() => watching.value?.id ?? autoFollow.value?.ep.id ?? null)
-const screenGen = computed(
-  () => watching.value?.gen ?? autoFollow.value?.ep.generation ?? null,
-)
+const screenSide = computed(() => {
+  if (screenDismissed.value && !watching.value) return null
+  return watching.value?.side ?? autoFollow.value?.side ?? null
+})
+const screenId = computed(() => {
+  if (screenDismissed.value && !watching.value) return null
+  return watching.value?.id ?? autoFollow.value?.ep.id ?? null
+})
+const screenGen = computed(() => {
+  if (screenDismissed.value && !watching.value) return null
+  return watching.value?.gen ?? autoFollow.value?.ep.generation ?? null
+})
 
 watch(
   () => [props.open, props.projectName] as const,
@@ -138,8 +167,13 @@ watch(
       clearInterval(poll)
       poll = null
     }
+    if (!isOpen) {
+      teardownStreams()
+      return
+    }
+    // Fresh open: allow auto-follow again for the live episode.
+    screenDismissed.value = false
     watching.value = null
-    if (!isOpen) return
     void refreshScores()
     poll = setInterval(() => {
       void refreshScores()
@@ -154,6 +188,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (poll) clearInterval(poll)
+  teardownStreams()
 })
 </script>
 
@@ -241,7 +276,7 @@ onUnmounted(() => {
               <button type="button" class="ep-btn" @click="onWatch('base', ep)">
                 <span class="ep-id">{{ ep.id }}</span>
                 <span class="ep-meta">
-                  {{ ep.outcome || (ep.terminated || ep.truncated ? 'done' : 'live') }}
+                  {{ epBadge(ep) }}
                 </span>
               </button>
             </li>
@@ -253,6 +288,14 @@ onUnmounted(() => {
             <li v-if="!champEpisodes.length" class="empty">
               <template v-if="scores?.run?.phase === 'failed'">
                 Theater stopped — use Start Theater to retry.
+              </template>
+              <template
+                v-else-if="
+                  !theaterRunning
+                  && (scores?.run?.phase === 'base' || scores?.run?.phase === 'base_done' || scores?.run?.phase === 'champion')
+                "
+              >
+                Theater stalled — use Start Theater to retry.
               </template>
               <template v-else-if="scores?.run?.phase === 'base' || scores?.run?.phase === 'base_done'">
                 Waiting until base finishes
@@ -266,7 +309,7 @@ onUnmounted(() => {
               <button type="button" class="ep-btn" @click="onWatch('champion', ep)">
                 <span class="ep-id">{{ ep.id }}</span>
                 <span class="ep-meta">
-                  {{ ep.outcome || (ep.terminated || ep.truncated ? 'done' : 'live') }}
+                  {{ epBadge(ep) }}
                 </span>
               </button>
             </li>
@@ -275,7 +318,7 @@ onUnmounted(() => {
       </div>
 
       <ScreenPanel
-        v-if="screenId && screenSide"
+        v-if="open && screenId && screenSide"
         :key="`${screenSide}-${screenId}-${watchRestartToken}`"
         embedded
         :project-name="projectName"

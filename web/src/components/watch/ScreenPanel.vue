@@ -44,9 +44,11 @@ const streamUrl = computed(() => {
   return watchFramesUrl(props.projectName, props.episodeId, props.gen, token)
 })
 
-const { frameSrc, loading, error } = useFrameStream(streamUrl)
+const { frameSrc, loading, error, stop } = useFrameStream(streamUrl)
 
 function close() {
+  // Drop the ALE stream before the parent clears episode state / unmounts.
+  stop()
   emit('close')
 }
 </script>

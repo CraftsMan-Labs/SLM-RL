@@ -197,6 +197,44 @@ def test_http_post_theater_unknown_experiment_400s(tmp_path: Path):
         assert resp.status == 400
 
 
+def test_http_stop_theater_stamps_failed_status(tmp_path: Path, monkeypatch):
+    """Stop Theater must flip status.json off phase=base so the UI does not
+    keep a partial episode labeled LIVE forever."""
+    class _Alive(_FakePopen):
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(exp_mod, "_spawn", lambda cmd, log_path, env=None, append=False: _Alive())
+    monkeypatch.setattr(exp_mod, "_STOP_GRACE_SECONDS", 0.05)
+    monkeypatch.setattr(exp_mod, "_terminate_proc", lambda proc: None)
+    exp = create_experiment(tmp_path, "space-invaders", "exp-stop-stamp", knob_values={})
+    status_path = exp.run_dir / "theater" / "status.json"
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
+        json.dumps({"phase": "base", "episode": 1, "episodes": 4}) + "\n",
+        encoding="utf-8",
+    )
+
+    with _ServerContext(tmp_path) as ctx:
+        resp = ctx.post("/api/experiments/exp-stop-stamp/theater", {"episodes": 2})
+        resp.read()
+        assert resp.status == 200
+        resp = ctx.post(
+            "/api/experiments/exp-stop-stamp/stop",
+            {"kinds": ["theater"]},
+        )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert resp.status == 200
+        assert body["stopped"] == ["theater"]
+
+    data = json.loads(status_path.read_text(encoding="utf-8"))
+    assert data["phase"] == "failed"
+    assert data["error"] == "stopped via UI"
+
+
 # --- /api/experiments/<name>/theater-scores --------------------------------
 
 
