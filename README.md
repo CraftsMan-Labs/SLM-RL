@@ -1,3 +1,5 @@
+
+
 # SLM-RL
 
 **A self-improving game gymnasium for small language models.**
@@ -85,7 +87,7 @@ viewer code needed to "support" theater dirs.
 
 ```bash
 uv run slm-rl theater --run-id <run-id>   # after `evolve` has promoted a champion
-uv run slm-rl watch --run <run-id>        # or open the exhibition dirs directly
+uv run slm-rl watch --run <run-id>/theater/base   # or open either exhibition dir directly
 ```
 
 In the playground UI (`uv run slm-rl playground`), each scoreboard row has
