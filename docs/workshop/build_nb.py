@@ -48,14 +48,17 @@ MERMAID_JS = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"
 
 
 def mermaid_cell(graph: str) -> None:
-    """Colab renders mermaid only inside %%html, not markdown fences."""
+    """Colab %%html: load mermaid, put the graph, THEN run (div must exist first)."""
     code(
         "%%html\n"
         f'<script src="{MERMAID_JS}"></script>\n'
-        "<script>mermaid.initialize({startOnLoad:true});</script>\n"
         '<div class="mermaid">\n'
         f"{graph.strip()}\n"
         "</div>\n"
+        "<script>\n"
+        "  mermaid.initialize({startOnLoad:false});\n"
+        "  mermaid.run();\n"
+        "</script>\n"
     )
 
 
