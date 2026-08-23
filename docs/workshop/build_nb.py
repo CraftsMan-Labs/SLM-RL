@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build colab_workshop.ipynb (chapters 0-13).
 
-Re-run from anywhere:
-    python /tmp/build_nb.py
+Re-run from the repo:
+    python docs/workshop/build_nb.py
 
 Writes:
     /home/rishub/Desktop/projects/enterprises/craftsmanlabs/SLM-RL/colab_workshop.ipynb
@@ -44,6 +44,21 @@ def code(source: str) -> None:
     )
 
 
+MERMAID_JS = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"
+
+
+def mermaid_cell(graph: str) -> None:
+    """Colab renders mermaid only inside %%html, not markdown fences."""
+    code(
+        "%%html\n"
+        f'<script src="{MERMAID_JS}"></script>\n'
+        "<script>mermaid.initialize({startOnLoad:true});</script>\n"
+        '<div class="mermaid">\n'
+        f"{graph.strip()}\n"
+        "</div>\n"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Chapters. Next agent: copy a chapter_* function, append it to CHAPTERS.
 # ---------------------------------------------------------------------------
@@ -62,7 +77,11 @@ def chapter_0() -> None:
 
 A small language model plays text-Atari, trains on its own games, and keeps the weights **only** if they beat the last champion.
 
-```mermaid
+**Runtime → Change runtime type → T4 GPU**, then run top to bottom. Cells call `slm_rl` directly — no web app, frames render inline.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     rollout[ROLLOUT] --> dataset[DATASET]
     dataset --> train[TRAIN]
@@ -71,9 +90,6 @@ flowchart LR
     gate -->|promote| champ[champion]
     gate -->|reject| champ
     champ --> rollout
-```
-
-**Runtime → Change runtime type → T4 GPU**, then run top to bottom. Cells call `slm_rl` directly — no web app, frames render inline.
 """
     )
 
@@ -219,15 +235,16 @@ except Exception as exc:
 ### Hardware tiers
 
 `configs/hardware.yaml` is first-match-wins. A T4 (~16 GB) lands on `cuda-8-16gb` → `LFM2.5-1.2B` + GRPO.
-
-```mermaid
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart TD
     host[detect_host] --> t24{VRAM >= 20 GB?}
     t24 -->|yes| gemma[cuda-24gb / Gemma E2B]
     t24 -->|no| t16{VRAM >= 6 GB?}
     t16 -->|yes| lfm[cuda-8-16gb / LFM 1.2B]
     t16 -->|no| floor[any-8gb / LFM 350M]
-```
 """
     )
 
@@ -364,26 +381,18 @@ def viewer_helpers() -> None:
         """\
 ### Viewer helpers
 
-Four functions, reused everywhere: `show_frame` (in-place PNG via the repo encoder), `ale_rgb`, `stream_episode` (wraps `game.step` — there is no callback hook), `plot_series`. Plus `show_mermaid` so the diagrams render in Colab, not just on GitHub.
+Four functions, reused everywhere: `show_frame` (in-place PNG via the repo encoder), `ale_rgb`, `stream_episode` (wraps `game.step` — there is no callback hook), `plot_series`. Diagrams use `%%html` + mermaid.js — Colab markdown fences do not render.
 """
     )
 
     code(
         r'''# Viewer helpers — defined once, reused by every later chapter.
-import base64
-
-from IPython.display import Image, SVG, display, update_display
+from IPython.display import Image, display, update_display
 from slm_rl.webui.png import encode_rgb
 
 %matplotlib inline
 
 _FRAME_IDS: set[str] = set()
-
-
-def show_mermaid(src: str):
-    """Render mermaid via mermaid.ink (Colab markdown does not run mermaid.js)."""
-    enc = base64.urlsafe_b64encode(src.strip().encode()).decode().rstrip("=")
-    display(SVG(url=f"https://mermaid.ink/svg/{enc}"))
 
 
 def show_frame(rgb, title, _id):
@@ -451,14 +460,7 @@ def plot_series(xs, ys, xlabel, ylabel, title):
     plt.show()
 
 
-print("what just happened: show_frame, ale_rgb, stream_episode, plot_series, show_mermaid are defined.")
-show_mermaid("""
-flowchart LR
-    pixels[ALE pixels] --> ram[128B RAM]
-    ram --> text[text observation]
-    text --> menu[numbered menu]
-    menu --> slm[SLM picks ACTION]
-""")
+print("what just happened: show_frame, ale_rgb, stream_episode, plot_series are defined.")
 '''
     )
 
@@ -470,15 +472,16 @@ def chapter_1() -> None:
 
 Atari as **text**. The model never sees pixels — RAM becomes a short description plus a numbered menu. SLMs are text-native; pixels would need a vision stack.
 
-```mermaid
+Types you will keep seeing: `Observation`, `ActionSpec`, `StepResult`. Boxing YAML is 2500 turns; `QUICK` caps `GameConfig.max_turns` to 32.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     ale[ALE RAM] --> render[ram_map]
     render --> obs["Observation.text"]
     obs --> menu["legal_actions"]
     menu --> step["game.step(ActionSpec)"]
-```
-
-Types you will keep seeing: `Observation`, `ActionSpec`, `StepResult`. Boxing YAML is 2500 turns; `QUICK` caps `GameConfig.max_turns` to 32.
 """
     )
 
@@ -540,14 +543,15 @@ def chapter_2() -> None:
 
 One merge, low → high. Model id / backend come from the tier table unless you override them (`PRECISION` sets `backend`).
 
-```mermaid
+`max_turns` is on `GameConfig`, not `RunConfig` — `game_cfg.model_copy(update={...})`.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     d[default.yaml] --> g[games/boxing.yaml]
     g --> o[overrides / KNOBS]
     o --> cfg[RunConfig]
-```
-
-`max_turns` is on `GameConfig`, not `RunConfig` — `game_cfg.model_copy(update={...})`.
 """
     )
 
@@ -593,7 +597,11 @@ def chapter_3() -> None:
 
 Aha cell: one Boxing observation → the exact prompt → raw text → parsed `ActionSpec`.
 
-```mermaid
+`parse_status`: `ok` / `retry_ok` / `fallback_random` (those last ones count as invalid). First run **downloads ~2 GB**.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     obs[obs.text + menu] --> gen[backend.generate]
     gen --> raw[raw_completion]
@@ -601,9 +609,6 @@ flowchart LR
     parse -->|ACTION / index / fuzzy| ok[ok]
     parse -->|fail| retry[one retry]
     retry -->|fail| rnd[fallback_random]
-```
-
-`parse_status`: `ok` / `retry_ok` / `fallback_random` (those last ones count as invalid). First run **downloads ~2 GB**.
 """
     )
 
@@ -661,15 +666,16 @@ def chapter_4() -> None:
 ## 4. Rollout + dataset
 
 One JSON line per decision. That file **is** the training data — prompt, completion, action, reward, monitor flags. No need to replay the emulator later.
-
-```mermaid
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     agent[LLMAgent] --> runner[EpisodeRunner]
     game[Game] --> runner
     runner --> mon[DoomLoopMonitor]
     mon --> jsonl[RolloutWriter JSONL]
     jsonl --> pq[consolidate parquet]
-```
 """
     )
 
@@ -746,7 +752,11 @@ def chapter_5() -> None:
 
 A 1.2B model has never boxed. A DQN has — small, fast, mute. It plays; the SLM studies the traces.
 
-```mermaid
+Three seams (`docs/HYBRID_RL.md`): warm-start demos, Q-top-k menu prune, potential shaping. **Hard rule: teachers never touch eval.**
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart TD
     raw[raw SLM] --> teacher[DQN teacher plays]
     teacher --> hw[homework demos]
@@ -756,9 +766,6 @@ flowchart TD
     exam --> topper{beats champion?}
     topper -->|yes| champ[promote]
     topper -->|no| raw
-```
-
-Three seams (`docs/HYBRID_RL.md`): warm-start demos, Q-top-k menu prune, potential shaping. **Hard rule: teachers never touch eval.**
 """
     )
 
@@ -776,12 +783,6 @@ from slm_rl.rollout.runner import EpisodeRunner
 dqn_device = "cuda" if torch.cuda.is_available() else "cpu"
 dqn_path = expected_dqn_checkpoint(GAME, HOME)
 print(f"training DQN for {DQN_DECISIONS} decisions on {dqn_device} → {dqn_path}")
-show_mermaid("""
-flowchart LR
-    dqn[DQN teacher] --> demos[demos]
-    demos --> slm[SLM SFT]
-    slm --> exam[eval — no teacher]
-""")
 DQN_SUMMARY = train_dqn(
     game_cfg,
     decisions=DQN_DECISIONS,
@@ -835,16 +836,17 @@ def chapter_6() -> None:
 
 Teacher demos + `dqn.pt` in one folder so a workshop shares homework instead of everyone training the same DQN.
 
-```mermaid
+This cell reuses Chapter 5's checkpoint (`dqn_decisions=0`). Push is optional — `HF_TOKEN` in Colab Secrets.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     bake[bake_pack] --> disk["MANIFEST + dqn.pt + rollouts/"]
     disk --> push[push_pack]
     push --> hub[HF dataset]
     hub --> pull[resolve_pack]
     pull --> disk
-```
-
-This cell reuses Chapter 5's checkpoint (`dqn_decisions=0`). Push is optional — `HF_TOKEN` in Colab Secrets.
 """
     )
 
@@ -933,7 +935,11 @@ def chapter_7() -> None:
 
 Same factory, two strategies. Both write a LoRA adapter (a few MB, not the whole 1.2B).
 
-```mermaid
+SFT = learn from your best games. GRPO = sample, score, nudge — slower, needs `GameConfig`. `q4` → QLoRA. T4 compute = fp16. Next cell frees the Chapter 3 backend first.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart TB
     subgraph sft [reject_sft — copy the best]
         a[keep top quantile] --> b[prompt / completion pairs]
@@ -948,9 +954,6 @@ flowchart TB
     data --> grpo
     c --> lora[adapter/]
     g --> lora
-```
-
-SFT = learn from your best games. GRPO = sample, score, nudge — slower, needs `GameConfig`. `q4` → QLoRA. T4 compute = fp16. Next cell frees the Chapter 3 backend first.
 """
     )
 
@@ -1002,13 +1005,6 @@ def _preview(path: Path) -> dict:
         line = fh.readline()
     return json.loads(line) if line.strip() else {}
 
-show_mermaid("""
-flowchart LR
-    pq[parquet] --> sft[reject_sft pairs]
-    pq --> grpo[GRPO prompts]
-    sft --> a[adapter/]
-    grpo --> a
-""")
 print(f"SFT rows:  {n_sft}  → {sft_path}")
 print("--- one SFT row (prompt / completion pair) ---")
 print(json.dumps(_preview(sft_path), indent=2, default=str)[:1800])
@@ -1128,7 +1124,11 @@ def chapter_8() -> None:
 
 Same frozen seeds, no teacher, no pruner. Promote only if the SLM itself got better.
 
-```mermaid
+Guards: `min_improvement`, `max_invalid_rate`, `max_intervention_rate_ratio`, `min_mean_entropy`. Boxing primary = `mean_score`. The cell also sabotages a copy so you see a real "no".
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart TD
     suite[eval_suite seeds] --> base[base model]
     suite --> cand[adapter]
@@ -1136,9 +1136,6 @@ flowchart TD
     cand --> g
     g -->|margin + hygiene| yes[promote]
     g -->|else| no[reject]
-```
-
-Guards: `min_improvement`, `max_invalid_rate`, `max_intervention_rate_ratio`, `min_mean_entropy`. Boxing primary = `mean_score`. The cell also sabotages a copy so you see a real "no".
 """
     )
 
@@ -1153,13 +1150,6 @@ from slm_rl.training.lora import release_trainer_memory
 game_cls = get_game(GAME)
 suite = game_cls.eval_suite()
 print(f"suite: game={suite.game} primary={suite.primary_metric} n_seeds={len(suite.seeds)} limit={EVAL_LIMIT}")
-show_mermaid("""
-flowchart TD
-    champ[champion metrics] --> gate{decide}
-    cand[candidate metrics] --> gate
-    gate -->|yes| p[promote]
-    gate -->|no| r[reject]
-""")
 
 eval_backend = create_backend(BACKEND or tier.backend, model_id, tier.quantization)
 eval_params = GenParams(max_tokens=cfg.train.max_completion_tokens, temperature=0.2)
@@ -1215,7 +1205,13 @@ def chapter_9() -> None:
 
 One generation = one pass. Promotion moves the champion pointer; reject leaves it put.
 
-```mermaid
+`GenerationRunner` reloads game YAML (Boxing = 2500 turns / 100 evals). The cell writes a `config_dir` overlay so QUICK stays short. `ensure_baseline()` is gen 0, cached.
+
+QUICK may **not** improve. That's the gate working, not a bug.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     R[ROLLOUT] --> D[DATASET]
     D --> T[TRAIN]
@@ -1224,11 +1220,6 @@ flowchart LR
     G -->|promote| C[champion]
     G -->|reject| C
     C --> R
-```
-
-`GenerationRunner` reloads game YAML (Boxing = 2500 turns / 100 evals). The cell writes a `config_dir` overlay so QUICK stays short. `ensure_baseline()` is gen 0, cached.
-
-QUICK may **not** improve. That's the gate working, not a bug.
 """
     )
 
@@ -1310,16 +1301,17 @@ def chapter_10() -> None:
 
 Payoff: base vs champion on the **same** seeds. Exhibition, not eval — eval is never written to disk.
 
-```mermaid
+`run_exhibition` loads one model at a time. We replay JSONL — no second load.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     seeds["seeds >= 20_000"] --> base[base plays]
     seeds --> champ[champion plays]
     base --> jsonl[theater JSONL]
     champ --> jsonl
     jsonl --> replay[replay actions + hstack frames]
-```
-
-`run_exhibition` loads one model at a time. We replay JSONL — no second load.
 """
     )
 
@@ -1461,13 +1453,14 @@ def chapter_11() -> None:
 ## 11. Publish
 
 Colab Secrets → `HF_TOKEN` (write scope). Missing token = friendly no-op, never a crash.
-
-```mermaid
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     run[run_dir] --> pub[publish_experiment]
     pub --> model["username/slm-rl-colab"]
     pub --> data["username/slm-rl-colab-data"]
-```
 """
     )
 
@@ -1533,14 +1526,15 @@ def chapter_12() -> None:
 
 Pure Python, seed-deterministic, no ML imports. Required: `reset`, `step`, `state_hash`, `system_prompt`, `eval_suite`.
 
-```mermaid
+The cell registers `guess-number` and rolls it out with the same runner as Boxing.
+"""
+    )
+    mermaid_cell(
+        """\
 flowchart LR
     abc[Game ABC] --> reg["@register_game"]
     reg --> runner[EpisodeRunner]
     runner --> rest[export / train / eval / gate]
-```
-
-The cell registers `guess-number` and rolls it out with the same runner as Boxing.
 """
     )
 
