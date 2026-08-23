@@ -52,13 +52,29 @@ There is **no** shared multi-user eval / ELO / auto-ranking product. Teams
 pick any game, screenshot theater or the scoreboard, and the instructor
 ranks socially — scores are not comparable across games.
 
-### Colab bake & stream
+### Colab workshop notebook
 
-Instructors (or anyone with a GPU runtime) can bake packs with a live screen
-stream in Google Colab — open [`colab_workshop.ipynb`](colab_workshop.ipynb)
-(*File → Upload notebook* into Colab, or *Open in Colab* once the repo is on
-GitHub). Pick a game, bake DQN + demos, watch frames update live, then push
-to Hugging Face for the local playground **Teacher → dqn** field.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/CraftsMan-Labs/SLM-RL/blob/main/colab_workshop.ipynb)
+
+[`colab_workshop.ipynb`](colab_workshop.ipynb) is a self-contained, chaptered
+walkthrough of the whole platform for people who have never seen this repo. It
+needs nothing but a free Colab **T4** runtime — no install, no Docker, no web
+app. Every stage is driven by direct `slm_rl` calls in notebook cells, with the
+playground's live viewers replaced by inline frames and plots:
+
+games and text observations → config → a model making one decision → rollouts
+and datasets → DQN teacher → packs → reject_sft and GRPO → eval and the
+promotion gate → the full evolve loop → base-vs-champion theater → publishing to
+Hugging Face → writing your own game.
+
+Two dropdowns at the top control the whole run. `MODE` picks `QUICK` (every cell
+finishes in a minute or two, for a workshop session) or `FULL` (realistic
+settings). `PRECISION` picks `q4` (default, 4-bit QLoRA — lowest VRAM and
+OOM-proof on any runtime), `fp16`, or `auto` to follow the hardware tier.
+
+Note that a T4 is Turing and has no bf16 support, so the CUDA path selects fp16
+by capability (`bf16_ok()` in `slm_rl/training/lora.py`); bf16 is used only on
+Ampere and newer.
 
 ### Day-of install
 

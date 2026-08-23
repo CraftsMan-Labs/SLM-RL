@@ -28,6 +28,7 @@ class TransformersBackend(InferenceBackend):
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         from slm_rl.hf_auth import hf_token
+        from slm_rl.training.lora import compute_dtype
 
         self.device = _pick_device(torch)
         token = hf_token()
@@ -40,7 +41,11 @@ class TransformersBackend(InferenceBackend):
         # CPU-first then .to(device): parallel HF→MPS materialization wedges
         # MetalShaderLibrary ("Loading weights: 0%" for tens of minutes).
         kwargs: dict = {
-            "dtype": torch.bfloat16 if self.device != "cpu" else torch.float32,
+            "dtype": (
+                compute_dtype(True) if self.device == "cuda"
+                else torch.bfloat16 if self.device == "mps"
+                else torch.float32
+            ),
             "token": token,
         }
         if four_bit and self.device == "cuda":
@@ -48,7 +53,7 @@ class TransformersBackend(InferenceBackend):
 
             kwargs["quantization_config"] = BitsAndBytesConfig(
                 load_in_4bit=True, bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_compute_dtype=compute_dtype(True),
             )
             kwargs["device_map"] = "cuda"
             self.model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)

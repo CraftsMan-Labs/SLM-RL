@@ -323,7 +323,10 @@ class GenerationRunner:
 
         # 4. TRAIN
         _log(f"[evolve] gen {generation}: train start strategy={strategy_name}")
-        strategy = create_strategy(strategy_name, self.cfg.train, self.model_id, self.game_cfg)
+        strategy = create_strategy(
+            strategy_name, self.cfg.train, self.model_id, self.game_cfg,
+            four_bit=self.backend_name.endswith("4bit"),
+        )
         result = strategy.train(train_view, self.paths.generation(generation), init_adapter=champ_adapter)
         _log(f"[evolve] gen {generation}: train done metrics={result.metrics}")
 

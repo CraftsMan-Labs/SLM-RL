@@ -28,10 +28,14 @@ class TrainResult:
 class TrainingStrategy(ABC):
     name: str
 
-    def __init__(self, cfg: TrainConfig, model_id: str, game_cfg: GameConfig | None = None):
+    def __init__(
+        self, cfg: TrainConfig, model_id: str, game_cfg: GameConfig | None = None,
+        four_bit: bool = False,
+    ):
         self.cfg = cfg
         self.model_id = model_id
         self.game_cfg = game_cfg  # needed by grpo (env-grounded rewards); reject_sft ignores it
+        self.four_bit = four_bit
 
     @abstractmethod
     def train(
@@ -43,15 +47,16 @@ class TrainingStrategy(ABC):
 
 
 def create_strategy(
-    name: str, cfg: TrainConfig, model_id: str, game_cfg: GameConfig | None = None
+    name: str, cfg: TrainConfig, model_id: str, game_cfg: GameConfig | None = None,
+    four_bit: bool = False,
 ) -> TrainingStrategy:
     """Lazy factory — heavy imports stay inside the strategy modules."""
     if name == "grpo":
         from slm_rl.training.grpo import GRPOStrategy
 
-        return GRPOStrategy(cfg, model_id, game_cfg)
+        return GRPOStrategy(cfg, model_id, game_cfg, four_bit=four_bit)
     if name == "reject_sft":
         from slm_rl.training.reject_sft import RejectSFTStrategy
 
-        return RejectSFTStrategy(cfg, model_id, game_cfg)
+        return RejectSFTStrategy(cfg, model_id, game_cfg, four_bit=four_bit)
     raise ValueError(f"Unknown training strategy {name!r}")

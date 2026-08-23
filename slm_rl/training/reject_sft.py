@@ -13,7 +13,7 @@ from pathlib import Path
 
 from slm_rl.datagen.sft_export import export_sft_dataset
 from slm_rl.training.base import TrainingStrategy, TrainResult
-from slm_rl.training.lora import bootstrap_lora, last_log_metrics, release_trainer_memory
+from slm_rl.training.lora import bf16_ok, bootstrap_lora, last_log_metrics, release_trainer_memory
 
 
 def _metrics_jsonl_callback(metrics_path: Path, num_pairs: int):
@@ -59,9 +59,10 @@ class RejectSFTStrategy(TrainingStrategy):
         ds = load_dataset("json", data_files=str(sft_path), split="train")
         cuda = torch.cuda.is_available()
         mps = bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
-        # bootstrap_lora's `cuda` flag means "use bf16 weights" — true for CUDA;
-        # MPS trains in fp16 via the trainer device placement below.
-        model, peft_config = bootstrap_lora(self.model_id, self.cfg, init_adapter, cuda)
+        # CUDA dtype is capability-picked; MPS stays fp32 (fp16 overflows).
+        model, peft_config = bootstrap_lora(
+            self.model_id, self.cfg, init_adapter, cuda, four_bit=self.four_bit,
+        )
 
         metrics_path = out_dir / "train.metrics.jsonl"
         _append_meta = {
@@ -75,7 +76,7 @@ class RejectSFTStrategy(TrainingStrategy):
             fh.write(json.dumps(_append_meta) + "\n")
 
         # MPS + fp16 overflows on this stack (loss spikes then stays 0 with
-        # grad_norm=nan). Train fp32 on Apple Silicon; bf16 only on CUDA.
+        # grad_norm=nan). Train fp32 on Apple Silicon; CUDA picks bf16 or fp16.
         args = SFTConfig(
             output_dir=str(out_dir / "trainer"),
             max_length=2048,
@@ -84,8 +85,8 @@ class RejectSFTStrategy(TrainingStrategy):
             num_train_epochs=2,
             per_device_train_batch_size=4 if cuda else (1 if mps else 1),
             gradient_accumulation_steps=4 if cuda else (16 if mps else 16),
-            bf16=cuda,
-            fp16=False,
+            bf16=cuda and bf16_ok(),
+            fp16=cuda and not bf16_ok(),
             use_cpu=not (cuda or mps),
             logging_steps=5,
             save_strategy="no",

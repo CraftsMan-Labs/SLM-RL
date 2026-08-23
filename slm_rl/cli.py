@@ -169,9 +169,11 @@ def train(
     dataset = paths.dataset(gen)
     if not dataset.exists():
         consolidate(paths.rollouts(gen), dataset)
+    backend = run_cfg.backend or t.backend
     strategy = create_strategy(
         train_strategy or run_cfg.train_strategy or t.train,
         run_cfg.train, model_id, load_game_config(game),
+        four_bit=backend.endswith("4bit"),
     )
     result = strategy.train(dataset, paths.generation(gen))
     typer.echo(f"trained -> {result.adapter_path}")

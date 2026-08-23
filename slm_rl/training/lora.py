@@ -22,11 +22,24 @@ def target_modules_for(model_id: str) -> list[str] | str:
     return "all-linear"  # PEFT fallback for unknown architectures
 
 
+def bf16_ok() -> bool:
+    """Ampere+ only. T4/V100 (Colab free tier) must use fp16."""
+    import torch
+    return torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+
+
+def compute_dtype(cuda: bool):
+    import torch
+    if not cuda:
+        return torch.float32  # CPU/MPS unchanged - MPS fp16 overflows on this stack
+    return torch.bfloat16 if bf16_ok() else torch.float16
+
+
 def _mps_available(torch: Any) -> bool:
     return bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
 
 
-def load_causal_lm(model_id: str, *, cuda: bool) -> Any:
+def load_causal_lm(model_id: str, *, cuda: bool, four_bit: bool = False) -> Any:
     """Load a causal LM without wedging Apple MPS.
 
     HuggingFace/TRL parallel weight materialization onto MPS contends inside
@@ -38,7 +51,28 @@ def load_causal_lm(model_id: str, *, cuda: bool) -> Any:
 
     from slm_rl.hf_auth import hf_token
 
-    dtype = torch.bfloat16 if cuda else torch.float32
+    if four_bit and not cuda:
+        import logging
+        logging.getLogger(__name__).warning(
+            "4-bit quantization needs CUDA (bitsandbytes has no CPU build); using full precision"
+        )
+        four_bit = False
+
+    if four_bit:
+        from transformers import BitsAndBytesConfig
+
+        return AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=BitsAndBytesConfig(
+                load_in_4bit=True, bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=compute_dtype(True),
+                bnb_4bit_use_double_quant=True,
+            ),
+            device_map="cuda",
+            token=hf_token(),
+        )
+
+    dtype = compute_dtype(cuda)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         dtype=dtype,
@@ -59,6 +93,7 @@ def load_causal_lm(model_id: str, *, cuda: bool) -> Any:
 
 def bootstrap_lora(
     model_id: str, cfg: Any, init_adapter: Path | None, cuda: bool,
+    four_bit: bool = False,
 ) -> tuple[Any, Any]:
     """Load a trainable PeftModel from `init_adapter`, or return
     `(base_model, LoraConfig)` for a fresh LoRA. Shared by reject_sft + grpo.
@@ -68,7 +103,10 @@ def bootstrap_lora(
     """
     from peft import LoraConfig, PeftModel
 
-    base = load_causal_lm(model_id, cuda=cuda)
+    base = load_causal_lm(model_id, cuda=cuda, four_bit=four_bit)
+    if four_bit and cuda:
+        from peft import prepare_model_for_kbit_training
+        base = prepare_model_for_kbit_training(base)
     if init_adapter is not None:
         return PeftModel.from_pretrained(base, str(init_adapter), is_trainable=True), None
     peft_config = LoraConfig(

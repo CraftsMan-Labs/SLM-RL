@@ -13,7 +13,7 @@ tiers:
   - name: cuda-8-16gb
     min_cuda_vram_gb: 6
     model: LiquidAI/LFM2.5-1.2B-Instruct
-    backend: transformers          # bf16; use transformers-4bit + quantization q4 only if OOM
+    backend: transformers          # bf16 on Ampere+, fp16 on Turing (T4); transformers-4bit for q4
     train: grpo
     quantization: null
 

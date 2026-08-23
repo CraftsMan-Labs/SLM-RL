@@ -17,7 +17,7 @@ from pathlib import Path
 from slm_rl.agents.llm_agent import extract_action_token
 from slm_rl.datagen.grpo_export import export_grpo_dataset
 from slm_rl.training.base import TrainingStrategy, TrainResult
-from slm_rl.training.lora import bootstrap_lora, last_log_metrics, release_trainer_memory
+from slm_rl.training.lora import bf16_ok, bootstrap_lora, last_log_metrics, release_trainer_memory
 
 try:
     from transformers import TrainerCallback
@@ -137,8 +137,10 @@ class GRPOStrategy(TrainingStrategy):
         ds = load_dataset("json", data_files=str(grpo_path), split="train")
         cuda = torch.cuda.is_available()
         mps = bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available())
-        # bf16 only on CUDA; MPS trains fp32 (fp16 overflows on this stack).
-        model, peft_config = bootstrap_lora(self.model_id, self.cfg, init_adapter, cuda)
+        # CUDA picks bf16 or fp16 by capability; MPS trains fp32 (fp16 overflows).
+        model, peft_config = bootstrap_lora(
+            self.model_id, self.cfg, init_adapter, cuda, four_bit=self.four_bit,
+        )
 
         # generation_batch_size (= batch * grad_accum) must be divisible by
         # num_generations. Hardware only changes fit; playground caps steps.
@@ -191,8 +193,8 @@ class GRPOStrategy(TrainingStrategy):
             max_steps=max_steps,
             per_device_train_batch_size=batch,
             gradient_accumulation_steps=accum,
-            bf16=cuda,
-            fp16=False,
+            bf16=cuda and bf16_ok(),
+            fp16=cuda and not bf16_ok(),
             use_cpu=not (cuda or mps),
             logging_steps=5,
             save_strategy="no",
