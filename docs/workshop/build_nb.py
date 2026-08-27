@@ -1013,7 +1013,8 @@ def chapter_5() -> None:
         "A 1.2B model has never played this title. A DQN has — small, fast, mute. It plays; the SLM studies the traces.\n\n"
         "Three seams (`docs/HYBRID_RL.md`): warm-start demos, Q-top-k menu prune, potential shaping. "
         "**Hard rule: teachers never touch eval.**\n\n"
-        "The deck now walks the DQN loop (Q-values, Bellman target, replay, target net, ε-greedy). "
+        "The deck now walks DQN the same way as GRPO: analogy first, then the loop "
+        "(game master → Q-values, leftover board → Bellman, flashcards → replay, tourist → ε-greedy). "
         "After the Atari teacher cell, an optional Mario subsection shows the same loop on pixels. "
         "It is gated: if the emulator or checkpoint is missing, a storyboard plus metrics still run.",
     )
@@ -2134,7 +2135,7 @@ Talk track (deck on one screen, this notebook on the other):
 | 2 Config | notebook-led; deck stays on the story |
 | 3 Model plays | journey → journey-tech |
 | 4 Dataset | rl-loop → sft-vs-rl → why-sft-first |
-| 5 Teachers | dqn → mechanism slides → dqn-mario → teacher-dataset |
+| 5 Teachers | dqn → dqn-analogy → mechanism slides → dqn-mario → teacher-dataset |
 | 6 Packs | workshop-flow |
 | 7 Training | gen-0-1 → GRPO slides |
 | 8 Gate | promote-reject → eval-gate |
