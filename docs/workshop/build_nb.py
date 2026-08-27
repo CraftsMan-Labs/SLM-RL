@@ -1039,11 +1039,19 @@ def chapter_5() -> None:
 **Analogy first.** A game master does not play for you. They score every legal move and point. Those numbers are Q-values.
 """
     )
+    deck_image(
+        "dqn-game-master.png",
+        "Game master: compare every legal move, then point to the strongest future.",
+    )
     diagram_cell("dqn-q-values", "One state, a number per action. The biggest number is the move.")
     md(
         """\
 **Today plus leftover.** A good chess move is the capture plus the position you leave behind. That sum is the Bellman target.
 """
+    )
+    deck_image(
+        "dqn-today-plus-tomorrow.png",
+        "A move is today’s reward plus the position it leaves behind.",
     )
     diagram_cell("dqn-bellman", "Reward now + discounted best next action (γ = 0.99).")
     md(
@@ -1051,8 +1059,21 @@ def chapter_5() -> None:
 **Flashcards, frozen key.** Shuffle the deck so you do not restudy the last frame only. Grade against yesterday’s answer key so the target does not sprint.
 """
     )
+    deck_image(
+        "dqn-flashcards-target.png",
+        "Replay shuffled experience against a temporarily frozen answer key.",
+    )
     diagram_cell("dqn-replay", "Play once, study many times. Random batches break the streak.")
     diagram_cell("dqn-target", "Online net learns. Target net holds still, then copies.")
+    md(
+        """\
+**Tourist, then regular.** Wander widely at first. Later, follow the best-known route while keeping a little curiosity.
+"""
+    )
+    deck_image(
+        "dqn-tourist-then-regular.png",
+        "ε-greedy: trust the learned route, but occasionally explore a side path.",
+    )
 
     challenge(
         "how long should the teacher train?",
