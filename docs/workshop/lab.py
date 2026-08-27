@@ -182,7 +182,7 @@ def require_names(namespace: dict[str, Any], *names: str) -> None:
 
 
 def skip_gates_enabled(flag: bool | None = None) -> bool:
-    """True when the instructor hatch or WORKSHOP_SKIP_GATES=1 is set."""
+    """True only for the environment-based instructor/automation hatch."""
     if flag is True:
         return True
     env = (os.environ.get("WORKSHOP_SKIP_GATES") or "").strip().lower()
@@ -199,9 +199,10 @@ def ask(
 ) -> str:
     """Block Runtime → Run all until the attendee types.
 
-    Colab form values never pause the kernel. ``input()`` does. When ``skip``
-    (or ``WORKSHOP_SKIP_GATES``) is set, return ``default`` so an instructor
-    demo or CI can fly through.
+    Colab form values never pause the kernel. ``input()`` does. Blank answers
+    never continue in participant mode. When ``skip`` (or the private
+    ``WORKSHOP_SKIP_GATES`` environment hatch) is set, return ``default`` so
+    instructor automation and CI can fly through.
     """
     options = tuple(allowed) if allowed is not None else None
     if skip_gates_enabled(skip):
@@ -222,14 +223,10 @@ def ask(
             lookup = {item.lower(): item for item in options}
             if text.lower() in lookup:
                 return lookup[text.lower()]
-            if not text and default.lower() in lookup:
-                return lookup[default.lower()]
             print("  type one of: " + ", ".join(options))
             continue
         if text:
             return text
-        if default:
-            return default
         print("  type something to continue — Runtime → Run all is paused on purpose.")
 
 

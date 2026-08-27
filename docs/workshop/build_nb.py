@@ -23,10 +23,12 @@ sys.path.insert(0, str(WORKSHOP))
 from talk_track import chapter_by_number, colab_cue  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[2] / "colab_workshop.ipynb"
-DIAGRAM_RAW = (
+ASSET_RAW = (
     "https://raw.githubusercontent.com/CraftsMan-Labs/SLM-RL/main/"
-    "docs/workshop/assets/diagrams"
+    "docs/workshop/assets"
 )
+DIAGRAM_RAW = f"{ASSET_RAW}/diagrams"
+DECK_RAW = f"{ASSET_RAW}/deck"
 
 cells: list[dict] = []
 
@@ -55,6 +57,19 @@ def code(source: str) -> None:
 def diagram_cell(name: str, caption: str) -> None:
     """Static SVG. Colab shows the image, not diagram source."""
     md(f"![{caption}]({DIAGRAM_RAW}/{name}.svg)\n\n*{caption}*")
+
+
+def deck_image(name: str, caption: str) -> None:
+    """Still from the Vue deck (`docs/workshop/assets/deck`)."""
+    md(f"![{caption}]({DECK_RAW}/{name})\n\n*{caption}*")
+
+
+def deck_video(name: str, caption: str) -> None:
+    """Short clip from the Vue deck. Colab markdown plays HTML5 video."""
+    md(
+        f'<video src="{DECK_RAW}/{name}" controls muted playsinline '
+        f'style="max-width:100%;height:auto"></video>\n\n*{caption}*'
+    )
 
 
 def chapter_open(number: int, body: str) -> None:
@@ -106,14 +121,14 @@ A small language model plays text-Atari, trains on its own games, and keeps the 
 
 **Runtime → Change runtime type → T4 GPU**, then run cells in order. A few cells ask you to **type** — that is on purpose. `Runtime → Run all` pauses there so the room stays together.
 
-Each chapter: **Choose → Predict → Run → Observe**. Yellow form cells (`# @param`) are knobs. Typed questions are the brakes. Challenge cells are extra — skip those and the rest still runs.
-
-Instructor hatch: set `SKIP_GATES` in the knobs cell (or `WORKSHOP_SKIP_GATES=1`) and the typed prompts use the form defaults.
+Each chapter: **Choose → Predict → Run → Observe**. Yellow form cells (`# @param`) are knobs. Typed questions are required brakes: blank answers do not continue. Challenge cells are extra — skip those and the rest still runs.
 
 The deck on the other screen keeps the story. This notebook is the execution surface. Chapter headings name the matching slides.
 """
     )
+    deck_image("HeroVisual.png", "Observe → act → reward → improve. Small models. Big moves.")
     diagram_cell("evolve-loop", "ROLLOUT → DATASET → TRAIN → EVAL → GATE → champion")
+    deck_video("FreeWay_trained.mp4", "Today we make a model play — trained Freeway from the deck.")
     chapter_open(
         0,
         "Checks the GPU, clones the repo if needed, installs `.[atari]` plus the train stack. "
@@ -294,7 +309,6 @@ Yellow form at the top of the next cell. Change a value, re-run **this cell**, t
 | `GAME` | `boxing` | Workshop Atari title. Re-run from here through Chapter 1 if you switch. |
 | `SEED` | `0` | Shared RNG so two attendees with the same seed can compare. |
 | `RUN_NAME` | `colab` | Folder under `HOME`. Letters, digits, `-`, `_`. |
-| `SKIP_GATES` | off | Instructor hatch. Typed questions use the form defaults so a demo can fly through. |
 
 - **q4** — 4-bit QLoRA. Lowest VRAM, OOM-proof. Slightly slower on a T4 (dequantize each step). Payoff is headroom: Chapter 10 loads two models.
 - **fp16** — 16-bit. Fits a 1.2B LoRA on 16 GB; often a bit faster per step here.
@@ -313,7 +327,6 @@ PRECISION = "q4"     # @param ["q4", "fp16", "auto"]
 GAME = "boxing"      # @param ["boxing", "space-invaders", "freeway", "demon-attack"]
 SEED = 0             # @param {type:"integer"}
 RUN_NAME = "colab"   # @param {type:"string"}
-SKIP_GATES = False   # @param {type:"boolean"}
 
 import sys
 from pathlib import Path
@@ -420,7 +433,6 @@ scorecard(
         ("EVAL_LIMIT", EVAL_LIMIT),
         ("generations", KNOBS["generations"]),
         ("train", KNOBS["train"]),
-        ("SKIP_GATES", SKIP_GATES),
     ],
 )
 print("If you change GAME, re-run from this cell through Chapter 1.")
@@ -443,13 +455,11 @@ print(
         r'''# @title Join the room
 DISPLAY_NAME = "anonymous"  # @param {type:"string"}
 
-from lab import ask, new_card, require_names, show_card
+from lab import ask, new_card, show_card
 
-require_names(globals(), "SKIP_GATES")
 name = ask(
     "Your name (shown on the scorecard)",
     default=DISPLAY_NAME,
-    skip=SKIP_GATES,
 )
 DISPLAY_NAME = name
 CARD = new_card(name)
@@ -611,6 +621,8 @@ def chapter_1() -> None:
         "Types you will keep seeing: `Observation`, `ActionSpec`, `StepResult`. "
         "Boxing YAML is 2500 turns; `QUICK` caps `GameConfig.max_turns` to 32.",
     )
+    deck_image("SLM.png", "An SLM is a coachable specialist — smaller, cheaper, faster to experiment.")
+    deck_image("Why-Games.png", "Games are measurable sandboxes: clear actions, cheap failures, repeatable eval.")
     diagram_cell("games-pipeline", "ALE RAM → text observation → legal menu → game.step")
 
     code(
@@ -657,18 +669,16 @@ from slm_rl.agents.bots import RandomAgent
 from slm_rl.rollout.runner import EpisodeRunner
 from lab import ask, ensure_card, grade, pick_action, record_guess, require_names, scorecard
 
-require_names(globals(), "game", "game_cfg", "SEED", "RUN_NAME", "SKIP_GATES")
+require_names(globals(), "game", "game_cfg", "SEED", "RUN_NAME")
 CARD = ensure_card(globals())
 YOUR_ACTION = ask(
     "Type an action id, label, or 1-based index from the menu above",
     default=YOUR_ACTION,
-    skip=SKIP_GATES,
 )
 PREDICT_BEATS_RANDOM = ask(
     "Will your one move beat a whole random episode?",
     allowed=("yes", "no", "not sure"),
     default=PREDICT_BEATS_RANDOM,
-    skip=SKIP_GATES,
 )
 game, game_cfg = ensure_game()
 obs = game.reset(seed=SEED)
@@ -828,13 +838,12 @@ from slm_rl.agents.llm_agent import LLMAgent
 from slm_rl.inference.base import GenParams, create_backend
 from lab import ask, bound, clamp_float, clamp_int, ensure_card, grade, record_guess, require_names, scorecard
 
-require_names(globals(), "cfg", "tier", "BACKEND", "MODE", "SEED", "RUN_NAME", "SKIP_GATES")
+require_names(globals(), "cfg", "tier", "BACKEND", "MODE", "SEED", "RUN_NAME")
 CARD = ensure_card(globals())
 PREDICT_PARSE = ask(
     "Guess the parse status before the model speaks",
     allowed=("ok", "retry_ok", "fallback_random"),
     default=PREDICT_PARSE,
-    skip=SKIP_GATES,
 )
 game, game_cfg = ensure_game()
 lo_t, hi_t = bound(MODE, "temperature")
@@ -908,6 +917,11 @@ def chapter_4() -> None:
         4,
         "One JSON line per decision. That file **is** the training data — prompt, completion, action, "
         "reward, monitor flags. No need to replay the emulator later.",
+    )
+    deck_image("SpaceInv.png", "Take an action, then score what happened. You control the scoreboard.")
+    deck_image(
+        "Observer-Learn-Play-React.png",
+        "SFT: guiding a hand. RL: play alone and score the outcome.",
     )
     diagram_cell("rollout-dataset", "EpisodeRunner writes JSONL, then consolidate to parquet")
 
@@ -1019,6 +1033,26 @@ def chapter_5() -> None:
         "It is gated: if the emulator or checkpoint is missing, a storyboard plus metrics still run.",
     )
     diagram_cell("dqn-hybrid", "DQN teacher writes homework; the SLM is examined without the teacher")
+    deck_video("meet-the-teacher.mp4", "Meet the teacher — a mute DQN already knows useful moves.")
+    md(
+        """\
+**Analogy first.** A game master does not play for you. They score every legal move and point. Those numbers are Q-values.
+"""
+    )
+    diagram_cell("dqn-q-values", "One state, a number per action. The biggest number is the move.")
+    md(
+        """\
+**Today plus leftover.** A good chess move is the capture plus the position you leave behind. That sum is the Bellman target.
+"""
+    )
+    diagram_cell("dqn-bellman", "Reward now + discounted best next action (γ = 0.99).")
+    md(
+        """\
+**Flashcards, frozen key.** Shuffle the deck so you do not restudy the last frame only. Grade against yesterday’s answer key so the target does not sprint.
+"""
+    )
+    diagram_cell("dqn-replay", "Play once, study many times. Random batches break the streak.")
+    diagram_cell("dqn-target", "Online net learns. Target net holds still, then copies.")
 
     challenge(
         "how long should the teacher train?",
@@ -1302,6 +1336,21 @@ def chapter_7() -> None:
         "`q4` → QLoRA. T4 compute = fp16. QUICK default trains **reject_sft** only; pick `both` if you want the GRPO comparison.",
     )
     diagram_cell("train-strategies", "parquet feeds reject_sft and GRPO; both write adapter/")
+    deck_image("GRPO.png", "Several attempts. Score the group. Prefer better-than-siblings.")
+    md(
+        f"""\
+**RLVR** — we do not need the perfect move. We need to know whether the outcome was better.
+
+| Hit / destroy **+** | Better score **+** |
+|---|---|
+| ![Enemy destroyed]({DECK_RAW}/enemy_destroyed.png) | ![Better score]({DECK_RAW}/better_score.png) |
+| Life lost / invalid **−** | Doom loop / parse fail **−** |
+| ![Life lost]({DECK_RAW}/life_lost.png) | ![Doom loop]({DECK_RAW}/doom_loop.png) |
+"""
+    )
+    md("**Before & after** — same seeds, raw vs trained. What changed?")
+    deck_video("base-0.mp4", "Raw model — Gen 0 baseline.")
+    deck_video("RL-trained.mp4", "After RL — valid actions, less spray, a hint of strategy.")
 
     challenge(
         "which trainer?",
@@ -1323,12 +1372,11 @@ from slm_rl.datagen.sft_export import export_sft_dataset
 from slm_rl.training.lora import release_trainer_memory
 from lab import ask, require_names, resolve_choice, scorecard, TRAIN_STRATEGIES
 
-require_names(globals(), "HOME", "RUN_NAME", "cfg", "game_cfg", "BACKEND", "tier", "SKIP_GATES")
+require_names(globals(), "HOME", "RUN_NAME", "cfg", "game_cfg", "BACKEND", "tier")
 TRAIN_STRATEGY = ask(
     "Which trainer? reject_sft is minutes; grpo is slower; both needs a VRAM flush",
     allowed=TRAIN_STRATEGIES,
     default=TRAIN_STRATEGY,
-    skip=SKIP_GATES,
 )
 TRAIN_STRATEGY = resolve_choice(TRAIN_STRATEGY, TRAIN_STRATEGIES, "reject_sft")
 
@@ -1541,13 +1589,12 @@ from slm_rl.inference.base import GenParams, create_backend
 from slm_rl.training.lora import release_trainer_memory
 from lab import ask, bound, clamp_float, ensure_card, grade, record_guess, require_names, scorecard
 
-require_names(globals(), "GAME", "MODE", "cfg", "EVAL_LIMIT", "SKIP_GATES")
+require_names(globals(), "GAME", "MODE", "cfg", "EVAL_LIMIT")
 CARD = ensure_card(globals())
 PREDICT_GATE = ask(
     "Will the gate promote this adapter, or reject it?",
     allowed=("promote", "reject"),
     default=PREDICT_GATE,
-    skip=SKIP_GATES,
 )
 game, game_cfg = ensure_game()
 lo, hi = bound(MODE, "min_improvement")
@@ -2100,6 +2147,8 @@ def chapter_13() -> None:
         13,
         "Fast slice: Boxing, config merge, JSONL writer. Not the full suite.",
     )
+    deck_image("meme_never_move.png", "Reward hacking: the agent learns what is scored — not what you meant.")
+    deck_image("doom.png", "Doom loop: same thought, same action, progress dies while the episode continues.")
 
     code(
         r'''!python -m pytest -q -x tests/test_boxing.py tests/test_config.py tests/test_rollout_writer.py
@@ -2151,7 +2200,7 @@ Talk track (deck on one screen, this notebook on the other):
 | Slow first load | ~2 GB download; cached after that |
 | Changed GAME | Re-run knobs through Chapter 1 (`ensure_game` rebuilds) |
 | Form value ignored | Re-run that yellow cell — later cells read the names as-is |
-| Stuck at a text prompt | Type an answer — `Runtime → Run all` is paused on purpose. Instructor: `SKIP_GATES` |
+| Stuck at a text prompt | Type a non-blank answer — `Runtime → Run all` is paused on purpose. |
 """
     )
     checkpoint(

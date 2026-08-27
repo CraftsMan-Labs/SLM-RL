@@ -73,13 +73,14 @@ or `auto`), plus the game, seed, and run name. Later chapters add bounded
 knobs — temperature, gate margin, train strategy, theater seed — and short
 predict-then-reveal quizzes. A few cells call `input()` on purpose so
 `Runtime → Run all` pauses (join, one move, parse guess, trainer, gate).
-`SKIP_GATES` (or `WORKSHOP_SKIP_GATES=1`) uses the form defaults for an
-instructor demo. Challenge cells are extra; skip those and the rest still runs.
+There is no participant-facing skip control, and blank answers do not continue.
+Challenge cells are extra; skip those and the rest still runs.
 
 Run it side-by-side with the Vue deck. Each chapter heading names the matching
 slides (`Presentation: …`). Pipeline diagrams are static SVGs, not Mermaid
-source. Chapter 5 has an optional Mario DQN demo for intuition; the Atari
-RAM-vector teacher remains the critical path.
+source. Deck stills and short clips live in `docs/workshop/assets/deck` so Colab
+can load them from this repo. Chapter 5 has an optional Mario DQN demo for
+intuition; the Atari RAM-vector teacher remains the critical path.
 
 Note that a T4 is Turing and has no bf16 support, so the CUDA path selects fp16
 by capability (`bf16_ok()` in `slm_rl/training/lora.py`); bf16 is used only on

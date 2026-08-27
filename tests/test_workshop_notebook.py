@@ -88,7 +88,8 @@ def test_ask_skip_and_reader(monkeypatch):
         )
         == "ok"
     )
-    assert ask("name", default="anon", skip=False, reader=lambda _prompt: "  ") == "anon"
+    names = iter(["  ", "Ada"])
+    assert ask("name", default="anon", skip=False, reader=lambda _prompt: next(names)) == "Ada"
     monkeypatch.setenv("WORKSHOP_SKIP_GATES", "1")
     assert skip_gates_enabled(False) is True
     assert ask("name", default="env", skip=None) == "env"
@@ -160,7 +161,11 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "**Goal.**" in joined
     assert "RUN_MARIO" in joined
     assert "docs/workshop/assets/diagrams/evolve-loop.svg" in joined
-    assert "SKIP_GATES = False" in joined
+    assert "docs/workshop/assets/deck/HeroVisual.png" in joined
+    assert "docs/workshop/assets/deck/meet-the-teacher.mp4" in joined
+    assert "docs/workshop/assets/diagrams/dqn-q-values.svg" in joined
+    assert "SKIP_GATES" not in joined
+    assert "skip=SKIP_GATES" not in joined
     assert "# @title Join the room" in joined
     assert "ask(" in joined
     assert "show_card(CARD)" in joined
@@ -198,6 +203,10 @@ def test_notebook_diagram_refs_resolve():
         "parse-action",
         "rollout-dataset",
         "dqn-hybrid",
+        "dqn-q-values",
+        "dqn-bellman",
+        "dqn-replay",
+        "dqn-target",
         "dqn-encoders",
         "packs",
         "train-strategies",
@@ -209,6 +218,12 @@ def test_notebook_diagram_refs_resolve():
     for name in names:
         assert f"{name}.svg" in joined
         assert (dest / f"{name}.svg").is_file()
+    from import_deck_assets import DECK_FILES
+
+    deck = WORKSHOP / "assets" / "deck"
+    for name in DECK_FILES:
+        assert name in joined
+        assert (deck / name).is_file()
 
 
 def test_workshop_diagrams_exist_and_are_svg():
