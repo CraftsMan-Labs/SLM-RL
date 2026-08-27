@@ -1,0 +1,4 @@
+flowchart LR
+    abc[Game ABC] --> reg["@register_game"]
+    reg --> runner[EpisodeRunner]
+    runner --> rest[export / train / eval / gate]

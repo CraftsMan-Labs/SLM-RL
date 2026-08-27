@@ -1,0 +1,14 @@
+flowchart TB
+    subgraph sft [reject_sft — copy the best]
+        a[keep top quantile] --> b[prompt / completion pairs]
+        b --> c[SFTTrainer]
+    end
+    subgraph grpo [GRPO — play and score]
+        d[one situation] --> e[sample K answers]
+        e --> f[score vs the game]
+        f --> g[push probability up]
+    end
+    data[parquet] --> sft
+    data --> grpo
+    c --> lora[adapter/]
+    g --> lora

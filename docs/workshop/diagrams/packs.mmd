@@ -1,0 +1,6 @@
+flowchart LR
+    bake[bake_pack] --> disk["MANIFEST + dqn.pt + rollouts/"]
+    disk --> push[push_pack]
+    push --> hub[HF dataset]
+    hub --> pull[resolve_pack]
+    pull --> disk

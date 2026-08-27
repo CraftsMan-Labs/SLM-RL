@@ -1,0 +1,7 @@
+flowchart LR
+    obs[obs.text + menu] --> gen[backend.generate]
+    gen --> raw[raw_completion]
+    raw --> parse{parse_action}
+    parse -->|ACTION / index / fuzzy| ok[ok]
+    parse -->|fail| retry[one retry]
+    retry -->|fail| rnd[fallback_random]

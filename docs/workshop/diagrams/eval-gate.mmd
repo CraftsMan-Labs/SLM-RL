@@ -1,0 +1,7 @@
+flowchart TD
+    suite[eval_suite seeds] --> base[base model]
+    suite --> cand[adapter]
+    base --> g{EvalGate.decide}
+    cand --> g
+    g -->|margin + hygiene| yes[promote]
+    g -->|else| no[reject]

@@ -1,0 +1,8 @@
+flowchart LR
+    rollout[ROLLOUT] --> dataset[DATASET]
+    dataset --> train[TRAIN]
+    train --> ev[EVAL]
+    ev --> gate[GATE]
+    gate -->|promote| champ[champion]
+    gate -->|reject| champ
+    champ --> rollout

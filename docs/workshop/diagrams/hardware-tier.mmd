@@ -1,0 +1,6 @@
+flowchart TD
+    host[detect_host] --> t24{VRAM >= 20 GB?}
+    t24 -->|yes| gemma[cuda-24gb / Gemma E2B]
+    t24 -->|no| t16{VRAM >= 6 GB?}
+    t16 -->|yes| lfm[cuda-8-16gb / LFM 1.2B]
+    t16 -->|no| floor[any-8gb / LFM 350M]

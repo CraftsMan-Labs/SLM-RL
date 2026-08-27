@@ -1,0 +1,9 @@
+flowchart TD
+    raw[raw SLM] --> teacher[DQN teacher plays]
+    teacher --> hw[homework demos]
+    hw --> sft[SFT copies habits]
+    sft --> world[SLM plays alone]
+    world --> exam[frozen exam — no teacher]
+    exam --> topper{beats champion?}
+    topper -->|yes| champ[promote]
+    topper -->|no| raw

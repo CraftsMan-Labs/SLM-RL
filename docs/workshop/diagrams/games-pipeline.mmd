@@ -1,0 +1,5 @@
+flowchart LR
+    ale[ALE RAM] --> render[ram_map]
+    render --> obs["Observation.text"]
+    obs --> menu["legal_actions"]
+    menu --> step["game.step(ActionSpec)"]

@@ -1,0 +1,4 @@
+{"stage": "untrained", "decisions": 0, "x_pos": 40, "mean_ep_reward": -1.2, "note": "falls in the first pit"}
+{"stage": "early", "decisions": 20000, "x_pos": 220, "mean_ep_reward": 4.1, "note": "holds right, still eats goombas"}
+{"stage": "mid", "decisions": 80000, "x_pos": 740, "mean_ep_reward": 18.6, "note": "jumps the first pipe"}
+{"stage": "pretrained", "decisions": 250000, "x_pos": 2100, "mean_ep_reward": 41.0, "note": "clears most of 1-1"}

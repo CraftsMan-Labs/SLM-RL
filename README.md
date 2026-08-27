@@ -67,10 +67,17 @@ and datasets → DQN teacher → packs → reject_sft and GRPO → eval and the
 promotion gate → the full evolve loop → base-vs-champion theater → publishing to
 Hugging Face → writing your own game.
 
-Two dropdowns at the top control the whole run. `MODE` picks `QUICK` (every cell
-finishes in a minute or two, for a workshop session) or `FULL` (realistic
-settings). `PRECISION` picks `q4` (default, 4-bit QLoRA — lowest VRAM and
-OOM-proof on any runtime), `fp16`, or `auto` to follow the hardware tier.
+Yellow Colab form cells drive the session: `MODE` (`QUICK` finishes each cell
+in a minute or two; `FULL` is a real run), `PRECISION` (`q4` default, `fp16`,
+or `auto`), plus the game, seed, and run name. Later chapters add bounded
+knobs — temperature, gate margin, train strategy, theater seed — and short
+predict-then-reveal quizzes. Challenge cells are optional; the main path
+always runs with the printed defaults.
+
+Run it side-by-side with the Vue deck. Each chapter heading names the matching
+slides (`Presentation: …`). Pipeline diagrams are static SVGs, not Mermaid
+source. Chapter 5 has an optional Mario DQN demo for intuition; the Atari
+RAM-vector teacher remains the critical path.
 
 Note that a T4 is Turing and has no bf16 support, so the CUDA path selects fp16
 by capability (`bf16_ok()` in `slm_rl/training/lora.py`); bf16 is used only on

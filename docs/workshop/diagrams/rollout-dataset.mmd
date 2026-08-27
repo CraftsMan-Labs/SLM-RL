@@ -1,0 +1,6 @@
+flowchart LR
+    agent[LLMAgent] --> runner[EpisodeRunner]
+    game[Game] --> runner
+    runner --> mon[DoomLoopMonitor]
+    mon --> jsonl[RolloutWriter JSONL]
+    jsonl --> pq[consolidate parquet]

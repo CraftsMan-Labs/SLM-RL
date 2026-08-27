@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="200" viewBox="0 0 920 200" role="img" aria-label="Custom game plugin path">
+<title>Custom game plugin path</title>
+<rect width="100%" height="100%" fill="#171512"/>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#D89B55"/>
+  </marker>
+</defs>
+<rect x="32.0" y="70.0" width="175.0" height="56.0" rx="8" fill="#0D0C0B" stroke="#60584E" stroke-width="1.4"/><text x="119.5" y="98.0" text-anchor="middle" fill="#F2E7D5" font-family="Inter, Helvetica, sans-serif" font-size="13" font-weight="600"><tspan x="119.5" dy="0">Game ABC</tspan></text><rect x="255.0" y="70.0" width="175.0" height="56.0" rx="8" fill="#0D0C0B" stroke="#60584E" stroke-width="1.4"/><text x="342.5" y="98.0" text-anchor="middle" fill="#F2E7D5" font-family="Inter, Helvetica, sans-serif" font-size="13" font-weight="600"><tspan x="342.5" dy="0">@register_game</tspan></text><line x1="207.0" y1="98.0" x2="255.0" y2="98.0" stroke="#D89B55" stroke-width="1.6" marker-end="url(#arrow)"/><rect x="478.0" y="70.0" width="175.0" height="56.0" rx="8" fill="#0D0C0B" stroke="#60584E" stroke-width="1.4"/><text x="565.5" y="98.0" text-anchor="middle" fill="#F2E7D5" font-family="Inter, Helvetica, sans-serif" font-size="13" font-weight="600"><tspan x="565.5" dy="0">EpisodeRunner</tspan></text><line x1="430.0" y1="98.0" x2="478.0" y2="98.0" stroke="#D89B55" stroke-width="1.6" marker-end="url(#arrow)"/><rect x="701.0" y="70.0" width="175.0" height="56.0" rx="8" fill="#0D0C0B" stroke="#60584E" stroke-width="1.4"/><text x="788.5" y="98.0" text-anchor="middle" fill="#F2E7D5" font-family="Inter, Helvetica, sans-serif" font-size="13" font-weight="600"><tspan x="788.5" dy="0">export / train / eval</tspan></text><line x1="653.0" y1="98.0" x2="701.0" y2="98.0" stroke="#D89B55" stroke-width="1.6" marker-end="url(#arrow)"/>
+</svg>

@@ -1,0 +1,6 @@
+flowchart LR
+    seeds["seeds >= 20_000"] --> base[base plays]
+    seeds --> champ[champion plays]
+    base --> jsonl[theater JSONL]
+    champ --> jsonl
+    jsonl --> replay[replay actions + hstack frames]
