@@ -7,8 +7,10 @@ heavy stack is ready.
 
 from __future__ import annotations
 
+import os
 import re
-from typing import Any, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 WORKSHOP_GAMES = ("boxing", "space-invaders", "freeway", "demon-attack")
 MODES = ("QUICK", "FULL")
@@ -177,3 +179,103 @@ def require_names(namespace: dict[str, Any], *names: str) -> None:
         raise RuntimeError(
             "Run the earlier cells first. Missing: " + ", ".join(missing)
         )
+
+
+def skip_gates_enabled(flag: bool | None = None) -> bool:
+    """True when the instructor hatch or WORKSHOP_SKIP_GATES=1 is set."""
+    if flag is True:
+        return True
+    env = (os.environ.get("WORKSHOP_SKIP_GATES") or "").strip().lower()
+    return env in {"1", "true", "yes"}
+
+
+def ask(
+    prompt: str,
+    *,
+    allowed: Iterable[str] | None = None,
+    default: str = "",
+    skip: bool | None = None,
+    reader: Callable[[str], str] | None = None,
+) -> str:
+    """Block Runtime → Run all until the attendee types.
+
+    Colab form values never pause the kernel. ``input()`` does. When ``skip``
+    (or ``WORKSHOP_SKIP_GATES``) is set, return ``default`` so an instructor
+    demo or CI can fly through.
+    """
+    options = tuple(allowed) if allowed is not None else None
+    if skip_gates_enabled(skip):
+        if default:
+            if options:
+                lookup = {item.lower(): item for item in options}
+                return lookup.get(default.lower(), default)
+            return default
+        return options[0] if options else ""
+
+    read = reader or input
+    hint = f" [{' / '.join(options)}]" if options else ""
+    suffix = ":" if not prompt.rstrip().endswith("?") else ""
+    label = f"{prompt.rstrip()}{hint}{suffix} "
+    while True:
+        text = (read(label) or "").strip()
+        if options:
+            lookup = {item.lower(): item for item in options}
+            if text.lower() in lookup:
+                return lookup[text.lower()]
+            if not text and default.lower() in lookup:
+                return lookup[default.lower()]
+            print("  type one of: " + ", ".join(options))
+            continue
+        if text:
+            return text
+        if default:
+            return default
+        print("  type something to continue — Runtime → Run all is paused on purpose.")
+
+
+def new_card(name: str) -> dict[str, Any]:
+    cleaned = (name or "").strip() or "anonymous"
+    return {"name": cleaned[:40], "guesses": []}
+
+
+def ensure_card(namespace: dict[str, Any]) -> dict[str, Any]:
+    card = namespace.get("CARD")
+    if not isinstance(card, dict) or "guesses" not in card:
+        card = new_card(str(namespace.get("DISPLAY_NAME") or "anonymous"))
+        namespace["CARD"] = card
+    return card
+
+
+def record_guess(card: dict[str, Any], key: str, guess: str, actual: str) -> dict[str, Any]:
+    pred = (guess or "").strip().lower()
+    act = (actual or "").strip().lower()
+    skipped = pred in {"", "not sure", "skip"}
+    row = {
+        "key": key,
+        "guess": guess,
+        "actual": actual,
+        "correct": (not skipped) and pred == act,
+        "skipped": skipped,
+    }
+    card.setdefault("guesses", []).append(row)
+    return row
+
+
+def show_card(card: dict[str, Any]) -> None:
+    """Print the running prediction card. Safe to call with an empty card."""
+    name = str(card.get("name") or "anonymous")
+    guesses = list(card.get("guesses") or [])
+    scored = [row for row in guesses if not row.get("skipped")]
+    hits = sum(1 for row in scored if row.get("correct"))
+    print(f"=== {name}'s scorecard ===")
+    if not guesses:
+        print("  (no guesses yet)")
+        return
+    width = max(len(str(row.get("key") or "")) for row in guesses)
+    for row in guesses:
+        mark = "skip" if row.get("skipped") else ("hit" if row.get("correct") else "miss")
+        print(
+            f"  {str(row.get('key') or ''):<{width}}  {mark:4s}  "
+            f"guess={row.get('guess')!r}  actual={row.get('actual')!r}"
+        )
+    print(f"  {hits}/{len(scored)} correct" if scored else "  no scored guesses yet")

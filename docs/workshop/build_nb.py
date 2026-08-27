@@ -104,9 +104,11 @@ def chapter_0() -> None:
 
 A small language model plays text-Atari, trains on its own games, and keeps the weights **only** if they beat the last champion.
 
-**Runtime → Change runtime type → T4 GPU**, then run top to bottom. Cells call `slm_rl` directly — no web app, frames render inline.
+**Runtime → Change runtime type → T4 GPU**, then run cells in order. A few cells ask you to **type** — that is on purpose. `Runtime → Run all` pauses there so the room stays together.
 
-Each chapter: **Choose → Predict → Run → Observe**. Yellow form cells (`# @param`) are yours. Challenge cells are optional — skip them and the rest still runs.
+Each chapter: **Choose → Predict → Run → Observe**. Yellow form cells (`# @param`) are knobs. Typed questions are the brakes. Challenge cells are extra — skip those and the rest still runs.
+
+Instructor hatch: set `SKIP_GATES` in the knobs cell (or `WORKSHOP_SKIP_GATES=1`) and the typed prompts use the form defaults.
 
 The deck on the other screen keeps the story. This notebook is the execution surface. Chapter headings name the matching slides.
 """
@@ -292,6 +294,7 @@ Yellow form at the top of the next cell. Change a value, re-run **this cell**, t
 | `GAME` | `boxing` | Workshop Atari title. Re-run from here through Chapter 1 if you switch. |
 | `SEED` | `0` | Shared RNG so two attendees with the same seed can compare. |
 | `RUN_NAME` | `colab` | Folder under `HOME`. Letters, digits, `-`, `_`. |
+| `SKIP_GATES` | off | Instructor hatch. Typed questions use the form defaults so a demo can fly through. |
 
 - **q4** — 4-bit QLoRA. Lowest VRAM, OOM-proof. Slightly slower on a T4 (dequantize each step). Payoff is headroom: Chapter 10 loads two models.
 - **fp16** — 16-bit. Fits a 1.2B LoRA on 16 GB; often a bit faster per step here.
@@ -310,6 +313,7 @@ PRECISION = "q4"     # @param ["q4", "fp16", "auto"]
 GAME = "boxing"      # @param ["boxing", "space-invaders", "freeway", "demon-attack"]
 SEED = 0             # @param {type:"integer"}
 RUN_NAME = "colab"   # @param {type:"string"}
+SKIP_GATES = False   # @param {type:"boolean"}
 
 import sys
 from pathlib import Path
@@ -416,12 +420,43 @@ scorecard(
         ("EVAL_LIMIT", EVAL_LIMIT),
         ("generations", KNOBS["generations"]),
         ("train", KNOBS["train"]),
+        ("SKIP_GATES", SKIP_GATES),
     ],
 )
 print("If you change GAME, re-run from this cell through Chapter 1.")
 print(
     f"what just happened: workshop knobs resolved for MODE={MODE} "
     f"PRECISION={PRECISION} GAME={GAME}."
+)
+'''
+    )
+
+    md(
+        """\
+### Join the room
+
+`Runtime → Run all` stops on the next cell until you type a name. That name is what the scorecard uses at the end.
+"""
+    )
+
+    code(
+        r'''# @title Join the room
+DISPLAY_NAME = "anonymous"  # @param {type:"string"}
+
+from lab import ask, new_card, require_names, show_card
+
+require_names(globals(), "SKIP_GATES")
+name = ask(
+    "Your name (shown on the scorecard)",
+    default=DISPLAY_NAME,
+    skip=SKIP_GATES,
+)
+DISPLAY_NAME = name
+CARD = new_card(name)
+show_card(CARD)
+print(
+    f"welcome, {CARD['name']}. later cells will pause and ask you to type. "
+    "that is the brake on Runtime → Run all."
 )
 '''
     )
@@ -608,8 +643,8 @@ print("Pick a menu line in the next cell, then compare it with a random episode.
 
     challenge(
         "play one move",
-        "Type an action **id** from the menu (`FIRE`, `LEFT`, …), a label, or a 1-based index. "
-        "Then guess whether one punch/move will look better than a whole random episode — "
+        "The next cell **asks you to type**. Pick an action **id** from the menu (`FIRE`, `LEFT`, …), "
+        "a label, or a 1-based index, then guess whether one punch beats a whole random episode — "
         "it usually will not. That is the point of the baseline.",
     )
 
@@ -620,9 +655,21 @@ PREDICT_BEATS_RANDOM = "no"   # @param ["yes", "no", "not sure"]
 
 from slm_rl.agents.bots import RandomAgent
 from slm_rl.rollout.runner import EpisodeRunner
-from lab import grade, pick_action, require_names, scorecard
+from lab import ask, ensure_card, grade, pick_action, record_guess, require_names, scorecard
 
-require_names(globals(), "game", "game_cfg", "SEED", "RUN_NAME")
+require_names(globals(), "game", "game_cfg", "SEED", "RUN_NAME", "SKIP_GATES")
+CARD = ensure_card(globals())
+YOUR_ACTION = ask(
+    "Type an action id, label, or 1-based index from the menu above",
+    default=YOUR_ACTION,
+    skip=SKIP_GATES,
+)
+PREDICT_BEATS_RANDOM = ask(
+    "Will your one move beat a whole random episode?",
+    allowed=("yes", "no", "not sure"),
+    default=PREDICT_BEATS_RANDOM,
+    skip=SKIP_GATES,
+)
 game, game_cfg = ensure_game()
 obs = game.reset(seed=SEED)
 chosen = pick_action(obs.legal_actions, YOUR_ACTION)
@@ -660,6 +707,7 @@ scorecard(
         ("prediction", grade(PREDICT_BEATS_RANDOM, actual)),
     ],
 )
+record_guess(CARD, "one-move vs random", PREDICT_BEATS_RANDOM, actual)
 print(
     f"what just happened: {GAME} reset to a text observation plus a legal-action "
     f"menu, you played {chosen.id!r}, and RandomAgent ran one episode "
@@ -701,9 +749,10 @@ MERGE_WINNER = "overrides"     # @param ["default.yaml", "game yaml", "overrides
 EPISODES_OVERRIDE = 0          # @param {type:"integer"}
 
 from slm_rl.config.loader import load_run_config
-from lab import bound, clamp_int, grade, require_names, scorecard
+from lab import bound, clamp_int, ensure_card, grade, record_guess, require_names, scorecard
 
 require_names(globals(), "GAME", "HOME", "BACKEND", "KNOBS", "MODE", "RUN_NAME", "SEED")
+CARD = ensure_card(globals())
 game, game_cfg = ensure_game()
 episodes = int(KNOBS["train"]["episodes_per_generation"])
 if EPISODES_OVERRIDE:
@@ -743,6 +792,7 @@ scorecard(
         ("merge quiz", grade(MERGE_WINNER, "overrides")),
     ],
 )
+record_guess(CARD, "merge winner", MERGE_WINNER, "overrides")
 print(
     "what just happened: load_run_config merged default.yaml + game YAML + your overrides. "
     "Last writer wins — that is the form. cfg.model is still None, so later cells use tier.model."
@@ -763,7 +813,7 @@ def chapter_3() -> None:
 
     challenge(
         "will it parse?",
-        "Guess the parse status **before** the model speaks. "
+        "Type your guess **before** the model speaks — `Runtime → Run all` waits. "
         "A raw `1.2B` often emits `ACTION: FIRE` (`ok`) — or garbage (`fallback_random`). "
         "Temperature 0.0 is more obedient; 1.2 is noisier.",
     )
@@ -776,9 +826,16 @@ PREDICT_PARSE = "ok"           # @param ["ok", "retry_ok", "fallback_random"]
 
 from slm_rl.agents.llm_agent import LLMAgent
 from slm_rl.inference.base import GenParams, create_backend
-from lab import bound, clamp_float, clamp_int, grade, require_names, scorecard
+from lab import ask, bound, clamp_float, clamp_int, ensure_card, grade, record_guess, require_names, scorecard
 
-require_names(globals(), "cfg", "tier", "BACKEND", "MODE", "SEED", "RUN_NAME")
+require_names(globals(), "cfg", "tier", "BACKEND", "MODE", "SEED", "RUN_NAME", "SKIP_GATES")
+CARD = ensure_card(globals())
+PREDICT_PARSE = ask(
+    "Guess the parse status before the model speaks",
+    allowed=("ok", "retry_ok", "fallback_random"),
+    default=PREDICT_PARSE,
+    skip=SKIP_GATES,
+)
 game, game_cfg = ensure_game()
 lo_t, hi_t = bound(MODE, "temperature")
 lo_k, hi_k = bound(MODE, "max_tokens")
@@ -809,6 +866,7 @@ print("--- parsed action ---")
 print(f"id={decision.action.id!r}  label={decision.action.label!r}")
 print(f"parse_status={decision.parse_status!r}")
 print(grade(PREDICT_PARSE, str(decision.parse_status)))
+record_guess(CARD, "parse status", PREDICT_PARSE, str(decision.parse_status))
 
 preview_cfg = game_cfg.model_copy(update={"max_turns": 6})
 previous_cfg = game.config
@@ -1246,7 +1304,8 @@ def chapter_7() -> None:
 
     challenge(
         "which trainer?",
-        "`reject_sft` is the workshop default (minutes). `grpo` is slower. `both` runs them in sequence and needs a VRAM flush between.",
+        "Type `reject_sft` (minutes), `grpo` (slower), or `both` (VRAM flush between). "
+        "`Runtime → Run all` waits here so you pick the strategy, not the default.",
     )
 
     code(
@@ -1261,9 +1320,15 @@ import torch
 from slm_rl.datagen.grpo_export import export_grpo_dataset
 from slm_rl.datagen.sft_export import export_sft_dataset
 from slm_rl.training.lora import release_trainer_memory
-from lab import require_names, resolve_choice, scorecard, TRAIN_STRATEGIES
+from lab import ask, require_names, resolve_choice, scorecard, TRAIN_STRATEGIES
 
-require_names(globals(), "HOME", "RUN_NAME", "cfg", "game_cfg", "BACKEND", "tier")
+require_names(globals(), "HOME", "RUN_NAME", "cfg", "game_cfg", "BACKEND", "tier", "SKIP_GATES")
+TRAIN_STRATEGY = ask(
+    "Which trainer? reject_sft is minutes; grpo is slower; both needs a VRAM flush",
+    allowed=TRAIN_STRATEGIES,
+    default=TRAIN_STRATEGY,
+    skip=SKIP_GATES,
+)
 TRAIN_STRATEGY = resolve_choice(TRAIN_STRATEGY, TRAIN_STRATEGIES, "reject_sft")
 
 # Free the Chapter 3 inference backend before we load a trainable copy.
@@ -1458,7 +1523,8 @@ def chapter_8() -> None:
 
     challenge(
         "will the gate promote?",
-        "QUICK adapters rarely beat the base. Guess promote or reject, then try a harsher `MARGIN_OVERRIDE` on a **copy** of the gate — the real `cfg.gate` stays put.",
+        "Type promote or reject **before** the suite runs. QUICK adapters rarely beat the base. "
+        "Then try a harsher `MARGIN_OVERRIDE` on a **copy** of the gate — the real `cfg.gate` stays put.",
     )
 
     code(
@@ -1472,9 +1538,16 @@ from slm_rl.eval.suites import run_suite
 from slm_rl.games.registry import get_game
 from slm_rl.inference.base import GenParams, create_backend
 from slm_rl.training.lora import release_trainer_memory
-from lab import bound, clamp_float, grade, require_names, scorecard
+from lab import ask, bound, clamp_float, ensure_card, grade, record_guess, require_names, scorecard
 
-require_names(globals(), "GAME", "MODE", "cfg", "EVAL_LIMIT")
+require_names(globals(), "GAME", "MODE", "cfg", "EVAL_LIMIT", "SKIP_GATES")
+CARD = ensure_card(globals())
+PREDICT_GATE = ask(
+    "Will the gate promote this adapter, or reject it?",
+    allowed=("promote", "reject"),
+    default=PREDICT_GATE,
+    skip=SKIP_GATES,
+)
 game, game_cfg = ensure_game()
 lo, hi = bound(MODE, "min_improvement")
 MARGIN_OVERRIDE = clamp_float(MARGIN_OVERRIDE, lo, hi, "MARGIN_OVERRIDE")
@@ -1534,6 +1607,7 @@ scorecard(
         ("sabotaged copy", f"promote={fake_promote}  {fake_reason}"),
     ],
 )
+record_guess(CARD, "gate", PREDICT_GATE, "promote" if promote else "reject")
 print(
     "what just happened: the frozen suite was played twice, the gate judged "
     "the real adapter, a copied threshold was applied, then a sabotaged copy was rejected."
@@ -2032,6 +2106,15 @@ print("what just happened: a fast subset of the repo tests ran and stopped on th
 '''
     )
 
+    code(
+        r'''from lab import ensure_card, show_card
+
+CARD = ensure_card(globals())
+show_card(CARD)
+print("that card is yours — Runtime → Run all cannot fill it in.")
+'''
+    )
+
     md(
         """\
 ## Appendix
@@ -2067,6 +2150,7 @@ Talk track (deck on one screen, this notebook on the other):
 | Slow first load | ~2 GB download; cached after that |
 | Changed GAME | Re-run knobs through Chapter 1 (`ensure_game` rebuilds) |
 | Form value ignored | Re-run that yellow cell — later cells read the names as-is |
+| Stuck at a text prompt | Type an answer — `Runtime → Run all` is paused on purpose. Instructor: `SKIP_GATES` |
 """
     )
     checkpoint(

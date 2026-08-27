@@ -71,8 +71,10 @@ Yellow Colab form cells drive the session: `MODE` (`QUICK` finishes each cell
 in a minute or two; `FULL` is a real run), `PRECISION` (`q4` default, `fp16`,
 or `auto`), plus the game, seed, and run name. Later chapters add bounded
 knobs — temperature, gate margin, train strategy, theater seed — and short
-predict-then-reveal quizzes. Challenge cells are optional; the main path
-always runs with the printed defaults.
+predict-then-reveal quizzes. A few cells call `input()` on purpose so
+`Runtime → Run all` pauses (join, one move, parse guess, trainer, gate).
+`SKIP_GATES` (or `WORKSHOP_SKIP_GATES=1`) uses the form defaults for an
+instructor demo. Challenge cells are extra; skip those and the rest still runs.
 
 Run it side-by-side with the Vue deck. Each chapter heading names the matching
 slides (`Presentation: …`). Pipeline diagrams are static SVGs, not Mermaid

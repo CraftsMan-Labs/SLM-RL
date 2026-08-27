@@ -14,16 +14,22 @@ WORKSHOP = ROOT / "docs" / "workshop"
 sys.path.insert(0, str(WORKSHOP))
 
 from lab import (  # noqa: E402
+    ask,
     clamp_float,
     clamp_int,
+    ensure_card,
     grade,
+    new_card,
     pick_action,
+    record_guess,
     require_names,
     resolve_backend,
     resolve_game,
     resolve_mode,
     sanitize_run_name,
     scorecard,
+    show_card,
+    skip_gates_enabled,
 )
 
 
@@ -65,6 +71,45 @@ def test_lab_require_and_scorecard(capsys):
     out = capsys.readouterr().out
     assert "=== demo ===" in out
     assert "k" in out
+
+
+def test_ask_skip_and_reader(monkeypatch):
+    assert ask("name", default="Ada", skip=True) == "Ada"
+    assert ask("pick", allowed=("ok", "retry_ok"), default="", skip=True) == "ok"
+    assert ask("pick", allowed=("ok", "retry_ok"), default="RETRY_OK", skip=True) == "retry_ok"
+    answers = iter(["nope", "OK"])
+    assert (
+        ask(
+            "parse?",
+            allowed=("ok", "retry_ok"),
+            default="ok",
+            skip=False,
+            reader=lambda _prompt: next(answers),
+        )
+        == "ok"
+    )
+    assert ask("name", default="anon", skip=False, reader=lambda _prompt: "  ") == "anon"
+    monkeypatch.setenv("WORKSHOP_SKIP_GATES", "1")
+    assert skip_gates_enabled(False) is True
+    assert ask("name", default="env", skip=None) == "env"
+    monkeypatch.delenv("WORKSHOP_SKIP_GATES", raising=False)
+    assert skip_gates_enabled(False) is False
+
+
+def test_card_records_and_prints(capsys):
+    card = new_card(" Ada ")
+    assert card["name"] == "Ada"
+    record_guess(card, "parse", "ok", "ok")
+    record_guess(card, "gate", "promote", "reject")
+    record_guess(card, "skip", "not sure", "ok")
+    show_card(card)
+    out = capsys.readouterr().out
+    assert "Ada's scorecard" in out
+    assert "1/2 correct" in out
+    ns: dict = {}
+    created = ensure_card(ns)
+    assert created["name"] == "anonymous"
+    assert ns["CARD"] is created
 
 
 def test_builder_writes_valid_notebook(tmp_path):
@@ -115,6 +160,11 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "**Goal.**" in joined
     assert "RUN_MARIO" in joined
     assert "docs/workshop/assets/diagrams/evolve-loop.svg" in joined
+    assert "SKIP_GATES = False" in joined
+    assert "# @title Join the room" in joined
+    assert "ask(" in joined
+    assert "show_card(CARD)" in joined
+    assert "Runtime → Run all" in joined
 
 
 def test_committed_notebook_matches_builder_and_parses():
