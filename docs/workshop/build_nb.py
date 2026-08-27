@@ -1036,22 +1036,39 @@ def chapter_5() -> None:
         "A 1.2B model has never played this title. A DQN has — small, fast, mute. It plays; the SLM studies the traces.\n\n"
         "Three seams (`docs/HYBRID_RL.md`): warm-start demos, Q-top-k menu prune, potential shaping. "
         "**Hard rule: teachers never touch eval.**\n\n"
-        "The deck walks DQN the same way as GRPO: analogy first, then the loop, then Mario. "
-        "World 1-1 is the intuition surface — pixels, two buttons, real improvement clips. "
-        "After the Atari teacher cell, an optional live Mario subsection can stream Q-values. "
-        "It is gated: if the emulator is missing, the recorded clips plus storyboard still run.",
+        "Same pattern as the deck: idea → Mario → the name. "
+        "Three short checkpoints (Q-values, Bellman, ε), then a pause before the clips. "
+        "World 1-1 is the evidence — recorded emulator play first. "
+        "The Atari teacher cell is the critical path; live Mario is optional and gated.",
     )
     diagram_cell("dqn-hybrid", "DQN teacher writes homework; the SLM is examined without the teacher")
     deck_video("meet-the-teacher.mp4", "Meet the teacher — a mute DQN already knows useful moves.")
     md(
         """\
-**Mario is the intuition.** World 1-1, pixels in, two buttons (`RIGHT`, `RIGHT+A`). Same loop as the Atari teacher. Super Mario Bros is how we *see* the algorithm. The RAM-vector teacher is still the pipeline.
+**The job.** A mute teacher writes homework. A 1.2B model has never played this title; a small DQN has. The SLM will study the traces. The teacher never sits the exam.
 """
     )
-    diagram_cell("dqn-encoders", "Pixels/CNN vs RAM-vector/MLP — same DQN loop")
+
     md(
         """\
-**Analogy first.** A game master does not play for you. They score every legal move and point. Those numbers are Q-values.
+**Why not a table?** A Q-table needs one row per screen. Mario has too many. A neural net estimates a number per action instead — those numbers are Q-values. The loop: look, score every move, pick. Sometimes try something new.
+"""
+    )
+    diagram_cell(
+        "dqn-loop",
+        "State → online net → Q-values → ε-greedy choice → chosen action (current best guess) → environment → reward + next state.",
+    )
+
+    md(
+        """\
+**One Mario frame.** Two buttons: `RIGHT` vs `RIGHT+A`. The net scored this frame:
+
+| Action | Q-value |
+|---|---|
+| `RIGHT` | 0.41 |
+| `RIGHT+A` | 1.27 |
+
+Biggest number is the current best guess — not a proven optimal policy.
 """
     )
     deck_image(
@@ -1059,9 +1076,46 @@ def chapter_5() -> None:
         "Game master: compare every legal move, then point to the strongest future.",
     )
     diagram_cell("dqn-q-values", "One state, a number per action. The biggest number is the move.")
+    challenge(
+        "which button?",
+        "Type `RIGHT` or `RIGHT+A` **before** the cell reveals the choice. "
+        "`Runtime → Run all` waits. The scorecard records your guess.",
+    )
+    code(
+        r'''# @title Predict RIGHT vs RIGHT+A
+PREDICT_ACTION = "RIGHT"   # @param ["RIGHT", "RIGHT+A"]
+
+from lab import ask, ensure_card, grade, record_guess, scorecard
+
+CARD = ensure_card(globals())
+SAMPLE_Q = {"RIGHT": 0.41, "RIGHT+A": 1.27}
+CHOSEN = max(SAMPLE_Q, key=SAMPLE_Q.get)
+PREDICT_ACTION = ask(
+    "Which action does the net pick from those Q-values?",
+    allowed=("RIGHT", "RIGHT+A"),
+    default=PREDICT_ACTION,
+)
+print(f"Q-values: {SAMPLE_Q}")
+print(f"chosen action / current best guess: {CHOSEN}")
+print(grade(PREDICT_ACTION, CHOSEN))
+record_guess(CARD, "RIGHT vs RIGHT+A", PREDICT_ACTION, CHOSEN)
+scorecard(
+    "Q-values",
+    [
+        ("RIGHT", SAMPLE_Q["RIGHT"]),
+        ("RIGHT+A", SAMPLE_Q["RIGHT+A"]),
+        ("your guess", PREDICT_ACTION),
+        ("choice", CHOSEN),
+    ],
+)
+'''
+    )
+
     md(
         """\
-**Today plus leftover.** A good chess move is the capture plus the position you leave behind. That sum is the Bellman target.
+**Today plus leftover.** A jump is the coin you grab now plus almost all of the best move after you land. That sum is the Bellman target. Predicted Q chases it. The loss is just “prediction versus target.” No derivation.
+
+`target = reward + γ × best next Q` for a continuing run. At death or episode end there is no “tomorrow,” so `target = reward`.
 """
     )
     deck_image(
@@ -1069,9 +1123,52 @@ def chapter_5() -> None:
         "A move is today’s reward plus the position it leaves behind.",
     )
     diagram_cell("dqn-bellman", "Reward now + discounted best next action (γ = 0.99).")
+    diagram_cell("dqn-math", "target = reward + γ × best next Q. Predicted value chases that target.")
+    challenge(
+        "compute the target",
+        "Edit reward, γ, and the next-action Q-values. The cell writes "
+        "`target = reward + γ × best next Q` and compares it with the current prediction.",
+    )
+    code(
+        r'''# @title One Bellman target
+REWARD = 1.0                 # @param {type:"number"}
+GAMMA = 0.99                 # @param {type:"number"}
+NEXT_Q_RIGHT = 0.50          # @param {type:"number"}
+NEXT_Q_RIGHT_A = 2.10        # @param {type:"number"}
+PREDICTED_Q = 1.20           # @param {type:"number"}
+TERMINAL = False             # @param {type:"boolean"}
+
+from lab import clamp_float, scorecard
+
+reward = clamp_float(REWARD, -2.0, 5.0, "REWARD")
+gamma = clamp_float(GAMMA, 0.0, 1.0, "GAMMA")
+q_right = clamp_float(NEXT_Q_RIGHT, -5.0, 10.0, "NEXT_Q_RIGHT")
+q_right_a = clamp_float(NEXT_Q_RIGHT_A, -5.0, 10.0, "NEXT_Q_RIGHT_A")
+predicted = clamp_float(PREDICTED_Q, -5.0, 10.0, "PREDICTED_Q")
+best_next = max(q_right, q_right_a)
+best_name = "RIGHT+A" if q_right_a >= q_right else "RIGHT"
+future = 0.0 if TERMINAL else gamma * best_next
+target = reward + future
+scorecard(
+    "Bellman",
+    [
+        ("target", f"{target:.3f}  =  reward {reward} + future {future:.3f}"),
+        ("terminal?", TERMINAL),
+        ("best next action", f"{best_name}  Q={best_next}"),
+        ("current prediction", predicted),
+        ("prediction − target", round(predicted - target, 3)),
+    ],
+)
+print(
+    "what just happened: you computed one Bellman target and compared it "
+    "with the net's current guess. The update pulls predicted Q toward the target."
+)
+'''
+    )
+
     md(
         """\
-**Flashcards, frozen key.** Shuffle the deck so you do not restudy the last frame only. Grade against yesterday’s answer key so the target does not sprint.
+**Shuffled flashcards.** If you only restudy the last page, you memorize one streak. Write every moment on a card — `(state, action, reward, next)` — and mix the pile. That pile is a **replay buffer**. A batch is a random draw, not the last frames.
 """
     )
     deck_image(
@@ -1079,43 +1176,122 @@ def chapter_5() -> None:
         "Replay shuffled experience against a temporarily frozen answer key.",
     )
     diagram_cell("dqn-replay", "Play once, study many times. Random batches break the streak.")
-    diagram_cell("dqn-target", "Online net learns. Target net holds still, then copies.")
+
     md(
         """\
-**Tourist, then regular.** Wander widely at first. Later, follow the best-known route while keeping a little curiosity.
+**A frozen answer key.** If the key changes while you mark the test, nobody learns. The **online** net plays. The **target** net is a delayed copy that writes `reward + γ × best next Q`. Copy it forward only now and then.
+"""
+    )
+    diagram_cell("dqn-target", "Online net plays. Target net grades. Then they sync.")
+
+    md(
+        """\
+**Explore early, trust later.** Wander widely at first. Later follow the best-known route — and still turn down a new alley about one time in twenty. The die-roll is **ε-greedy**. The greedy pick is the current best guess, not a truly optimal policy.
 """
     )
     deck_image(
         "dqn-tourist-then-regular.png",
         "ε-greedy: trust the learned route, but occasionally explore a side path.",
     )
-    md(
-        """\
-**One line of math.** `target = reward + γ × best next Q`. Every symbol is a Mario habit:
-
-| Symbol | In words | On World 1-1 |
-|---|---|---|
-| `reward` | What just happened | Coin, progress right, or death |
-| `γ = 0.99` | Keep almost all of tomorrow | A jump that sets up the next pipe |
-| `best next Q` | Best action from the next frame | `RIGHT` vs `RIGHT+A` after landing |
-| `predicted Q` | What the net currently believes | The number it had before the step |
-
-The loss is just “predicted value versus target value.” No derivation on this page.
-"""
+    challenge(
+        "set ε",
+        "Pick an ε. The cell draws a small seeded sample: exploit = current best guess "
+        "(`RIGHT+A`); explore = a random legal button.",
     )
-    diagram_cell("dqn-math", "target = reward + γ × best next Q. Predicted value chases that target.")
-    md(
-        """\
-**On World 1-1.** Same four habits: score `RIGHT` vs `RIGHT+A`, backup today-plus-tomorrow, shuffle replay against a frozen key, wander then trust.
+    code(
+        r'''# @title Epsilon sample
+EPSILON = 0.20               # @param {type:"slider", min:0.0, max:1.0, step:0.05}
+N_DRAWS = 20                 # @param {type:"integer"}
 
-Recorded clips below are real emulator play from checksummed public CNN checkpoints — not a storyboard.
-"""
+import random
+
+from lab import clamp_float, clamp_int, require_names, scorecard
+
+require_names(globals(), "SEED")
+eps = clamp_float(EPSILON, 0.0, 1.0, "EPSILON")
+n = clamp_int(N_DRAWS, 5, 40, "N_DRAWS")
+legal = ("RIGHT", "RIGHT+A")
+exploit_action = "RIGHT+A"
+rng = random.Random(SEED)
+rows = []
+for i in range(n):
+    if rng.random() < eps:
+        choice = rng.choice(legal)
+        tag = "explore"
+    else:
+        choice = exploit_action
+        tag = "exploit"
+    rows.append((tag, choice))
+n_explore = sum(tag == "explore" for tag, _ in rows)
+scorecard(
+    "ε-greedy sample",
+    [
+        ("ε", eps),
+        ("draws", n),
+        ("seed", SEED),
+        ("exploit (current best guess)", exploit_action),
+        ("explore / exploit", f"{n_explore} / {n - n_explore}"),
+        ("sequence", " ".join(f"{tag[0]}:{choice}" for tag, choice in rows)),
+    ],
+)
+print(
+    "what just happened: a deterministic ε-greedy sample. "
+    "High ε wanders; low ε trusts the current best guess."
+)
+'''
+    )
+
+    challenge(
+        "which clip goes farthest?",
+        "Type `untrained`, `mid`, or `pretrained` **before** the videos appear. "
+        "`Runtime → Run all` waits here on purpose.",
+    )
+    code(
+        r'''# @title Predict the Mario clips
+PREDICT_CLIP = "pretrained"  # @param ["untrained", "mid", "pretrained"]
+
+from lab import ask, ensure_card, grade, record_guess, scorecard
+
+CARD = ensure_card(globals())
+PREDICT_CLIP = ask(
+    "Which clip travels farthest on World 1-1?",
+    allowed=("untrained", "mid", "pretrained"),
+    default=PREDICT_CLIP,
+)
+ACTUAL_CLIP = "pretrained"
+print(grade(PREDICT_CLIP, ACTUAL_CLIP))
+record_guess(CARD, "mario clips", PREDICT_CLIP, ACTUAL_CLIP)
+scorecard(
+    "Mario prediction",
+    [
+        ("your guess", PREDICT_CLIP),
+        ("farthest clip", ACTUAL_CLIP),
+        ("untrained", "dies at the first Goomba (x≈296)"),
+        ("mid", "starts jumping, still dies early"),
+        ("pretrained", "clears the first pit, reaches the first pipe (x≈594)"),
+    ],
+)
+print("clips next — real emulator play from checksummed public CNN checkpoints.")
+'''
     )
     mario_video("mario-untrained.mp4", "Untrained — random weights, dies at the first Goomba (x≈296).")
     mario_video("mario-mid.mp4", "Mid checkpoint — starts jumping, still dies early.")
     mario_video(
         "mario-pretrained.mp4",
         "Pretrained — clears the first pit and reaches the first pipe (x≈594).",
+    )
+
+    md(
+        """\
+**Same algorithm, different eyes.** Mario sees pixels through a CNN. The workshop teacher sees a RAM vector through an MLP. Replay, target net, and ε-greedy stay the same. Super Mario Bros is how we *see* the loop. The RAM-vector teacher is still the pipeline.
+"""
+    )
+    diagram_cell("dqn-encoders", "Pixels/CNN vs RAM-vector/MLP — same DQN loop")
+
+    md(
+        """\
+**Raw homework.** The teacher’s captured transitions are synthetic traces — not training pairs yet. Chapter 6 curates them. First, train the Atari teacher on the critical path.
+"""
     )
 
     challenge(
@@ -1295,28 +1471,111 @@ else:
 def chapter_6() -> None:
     chapter_open(
         6,
-        "The mute DQN just wrote machine-generated demonstrations — synthetic homework, not exam labels.\n\n"
-        "We curate those traces into SFT pairs (`select_episodes` in `sft_export.py`), then bake a pack so the room shares one textbook. "
+        "The traces from Chapter 5 are still rollout rows — reward, monitor flags, "
+        "sometimes a `Q-values rank…` rationale. They are not training pairs yet.\n\n"
+        "This chapter inspects one real row, runs `select_episodes` / `export_sft_dataset`, "
+        "then shows the prompt/completion pair. After that, the pack cell bakes a shareable textbook. "
         "Gen-1 SFT is a warm start: it teaches the action alphabet. The eval gate comes later.\n\n"
-        "This cell reuses Chapter 5's checkpoint (`dqn_decisions=0`). Push is **off** unless you tick the form and set a repo.",
+        "The pack cell reuses Chapter 5's checkpoint (`dqn_decisions=0`). Push is **off** unless you tick the form and set a repo.",
     )
     diagram_cell("trace-to-pair", "DQN play → JSONL row → select → ACTION pair")
     md(
         """\
-**Why synthetic homework?** A 1.2B model has never played this title. The DQN has. Each useful episode is `state → action → reward`. We do **not** ask a human to label frames, and we do **not** let the teacher sit the exam.
+**Look before you bake.** A raw JSONL row is a decision trace. An SFT pair is `{prompt, completion}`. The next cell runs the same `select_episodes` / `export_sft_dataset` APIs the trainer uses, so you can see the cut.
+"""
+    )
+    code(
+        r'''# @title Inspect a trace before SFT
+import json
+from pathlib import Path
 
-**Curation (`slm_rl/datagen/sft_export.py`):**
+from slm_rl.datagen.sft_export import export_sft_dataset, group_episodes, select_episodes
+from slm_rl.datagen.writer import RolloutWriter
+from slm_rl.rollout.runner import EpisodeRunner
+from lab import require_names, scorecard
+
+require_names(globals(), "HOME", "RUN_NAME", "SEED", "cfg")
+
+raw_path = Path(HOME) / RUN_NAME / "teacher-traces.jsonl"
+source = "missing"
+if "teacher_agent" in globals() and "teacher_id" in globals():
+    game, game_cfg = ensure_game()
+    unwrap_game(game)
+    with RolloutWriter(raw_path) as writer:
+        EpisodeRunner(
+            game, teacher_agent, game_cfg, writer=writer,
+            run_id=RUN_NAME, generation=0, model_id=teacher_id,
+        ).run_episode(seed=SEED + 3, episode_id="teacher-trace-000")
+    unwrap_game(game)
+    source = "chapter-5-teacher"
+elif "jsonl_path" in globals() and Path(jsonl_path).is_file():
+    raw_path = Path(jsonl_path)
+    source = "chapter-4-jsonl"
+else:
+    raise RuntimeError("Run Chapter 4 or the Chapter 5 teacher cell first so a JSONL trace exists.")
+
+with raw_path.open(encoding="utf-8") as fh:
+    raw = json.loads(next(line for line in fh if line.strip()))
+
+print("=== raw rollout row (not a training pair) ===")
+print("keys:", sorted(raw))
+completion = raw.get("completion") or raw.get("raw_completion") or ""
+scorecard(
+    "raw trace",
+    [
+        ("source", source),
+        ("path", raw_path),
+        ("episode_id", raw.get("episode_id")),
+        ("step_idx", raw.get("step_idx")),
+        ("parsed_action", raw.get("parsed_action")),
+        ("reward", raw.get("reward")),
+        ("model_id", raw.get("model_id")),
+        ("completion", str(completion)[:220]),
+        ("training pair yet?", "no — still a rollout row"),
+    ],
+)
+
+n_raw = len(group_episodes(raw_path))
+selected = select_episodes(raw_path, cfg.train)
+sft_preview = Path(HOME) / RUN_NAME / "sft-preview.jsonl"
+n_pairs = export_sft_dataset(raw_path, sft_preview, cfg.train)
+print(f"select_episodes: {n_raw} episode(s) in → {len(selected)} kept")
+print(f"export_sft_dataset: {n_pairs} prompt/completion pair(s)")
+
+if n_pairs == 0:
+    print("no SFT pairs — every step was fallback_random or the episode was dropped.")
+else:
+    with sft_preview.open(encoding="utf-8") as fh:
+        pair = json.loads(next(line for line in fh if line.strip()))
+    print("=== after select_episodes / SFT conversion (this is a training pair) ===")
+    print("keys:", sorted(pair))
+    scorecard(
+        "SFT pair",
+        [
+            ("keys", list(pair)),
+            ("prompt roles", [m.get("role") for m in (pair.get("prompt") or [])]),
+            ("completion", pair.get("completion")),
+        ],
+    )
+print(
+    "what just happened: a raw trace is not a training pair. "
+    "select_episodes keeps useful episodes; export_sft_dataset writes prompt → ACTION."
+)
+'''
+    )
+    md(
+        """\
+**What that training export just did** (`sft_export.py`):
 
 1. Drop monitor-flagged doom loops.
-2. Keep wins and the top return quantile (QUICK keeps more; FULL keeps ~25%).
-3. Cap identical action sequences so the book is not twenty copies of the same dash.
-4. Strip `Q-values rank…` from DQN completions — the SLM copies `ACTION: RIGHT`, not a fake ranking.
+2. Keep wins and the top return quantile.
+3. Cap identical action sequences.
+4. Strip `Q-values rank…` so the student copies `ACTION: RIGHT`, not a fake ranking.
 
-**Why SFT first?** Orientation, then play. SFT teaches valid `ACTION:` lines. RLVR / GRPO explore after the model can move. Generation 1 is adopted as a warm start (D12) — it is not competing at the eval gate.
+The pack bake below applies its own top-return filter before storing rollouts. SFT export later applies the complete selection and conversion above. SFT teaches the action alphabet. The frozen eval gate decides later — not in this chapter.
 """
     )
     diagram_cell("packs", "bake_pack → disk → Hugging Face → resolve_pack")
-    diagram_cell("dqn-hybrid", "Teacher writes homework; the frozen exam never sees the teacher")
 
     code(
         r'''# @title Packs (optional hub)
@@ -2265,8 +2524,8 @@ Talk track (deck on one screen, this notebook on the other):
 | 2 Config | notebook-led; deck stays on the story |
 | 3 Model plays | journey → journey-tech |
 | 4 Dataset | rl-loop → sft-vs-rl → why-sft-first |
-| 5 Teachers | dqn → mario intro → analogies → math → clips → teacher-dataset |
-| 6 Packs | synthetic-homework → trace-to-pair → dataset-filters → why-warmstart |
+| 5 Teachers | section-dqn → what-is-dqn → q-values → Bellman → replay → target → ε → clips → bridge → teacher-dataset |
+| 6 Packs | synthetic-homework → inspect a trace → trace-to-pair → dataset-filters → why-warmstart |
 | 7 Training | gen-0-1 → GRPO slides |
 | 8 Gate | promote-reject → eval-gate |
 | 9 Evolve | self-improve → champion-rollouts |

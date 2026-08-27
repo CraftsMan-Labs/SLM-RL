@@ -167,6 +167,12 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "docs/workshop/assets/deck/HeroVisual.png" in joined
     assert "docs/workshop/assets/deck/meet-the-teacher.mp4" in joined
     assert "docs/workshop/assets/diagrams/dqn-q-values.svg" in joined
+    assert "docs/workshop/assets/diagrams/dqn-loop.svg" in joined
+    assert "PREDICT_ACTION" in joined
+    assert "NEXT_Q_RIGHT" in joined
+    assert "EPSILON" in joined
+    assert "PREDICT_CLIP" in joined
+    assert "export_sft_dataset" in joined
     assert "SKIP_GATES" not in joined
     assert "skip=SKIP_GATES" not in joined
     assert "# @title Join the room" in joined
@@ -206,6 +212,7 @@ def test_notebook_diagram_refs_resolve():
         "parse-action",
         "rollout-dataset",
         "dqn-hybrid",
+        "dqn-loop",
         "dqn-q-values",
         "dqn-bellman",
         "dqn-replay",
@@ -250,6 +257,28 @@ def test_workshop_diagrams_exist_and_are_svg():
         assert 'aria-label=' in text
 
 
+def test_dqn_loop_diagram_is_guess_loop_not_optimal_policy():
+    from diagrams.render import RENDERERS, dqn_loop
+
+    assert "dqn-loop" in RENDERERS
+    svg = dqn_loop()
+    lowered = svg.lower()
+    assert svg.startswith("<svg")
+    assert "optimal" not in lowered
+    assert "policy" not in lowered
+    for phrase in (
+        "state",
+        "online network",
+        "Q-values",
+        "ε-greedy choice",
+        "chosen action",
+        "current best guess",
+        "environment",
+        "reward + next state",
+    ):
+        assert phrase in svg
+
+
 def test_talk_track_headings_match_builder():
     from talk_track import CHAPTERS
 
@@ -259,11 +288,83 @@ def test_talk_track_headings_match_builder():
         assert row["heading"] in joined
         assert row["goal"] in joined
     ch5 = next(row for row in CHAPTERS if row["number"] == 5)
-    for slide_id in ("dqn-mario-intro", "dqn-math-overview", "dqn-mario-map"):
-        assert slide_id in ch5["slide_ids"]
+    assert ch5["slide_ids"] == (
+        "section-dqn",
+        "what-is-dqn",
+        "dqn-q-values",
+        "dqn-bellman",
+        "dqn-replay",
+        "dqn-target",
+        "dqn-epsilon",
+        "dqn-curve",
+        "dqn-bridge",
+        "teacher-dataset",
+    )
+    for slide_id in (
+        "dqn",
+        "dqn-mario-intro",
+        "dqn-analogy",
+        "dqn-backup-analogy",
+        "dqn-study-analogy",
+        "dqn-math-overview",
+        "dqn-explore-analogy",
+        "dqn-mario-map",
+        "dqn-mario",
+    ):
+        assert slide_id not in ch5["slide_ids"]
     ch6 = next(row for row in CHAPTERS if row["number"] == 6)
-    for slide_id in ("synthetic-homework", "trace-to-pair", "dataset-filters", "why-warmstart"):
-        assert slide_id in ch6["slide_ids"]
+    assert ch6["slide_ids"] == (
+        "section-packs",
+        "synthetic-homework",
+        "trace-to-pair",
+        "dataset-filters",
+        "why-warmstart",
+    )
+
+
+def _chapter_slice(joined: str, number: int, nxt: int) -> str:
+    start = joined.index(f"## {number}.")
+    end = joined.index(f"## {nxt}.")
+    return joined[start:end]
+
+
+def test_chapter_5_6_interactions_and_sequence(tmp_path):
+    """Deck order, learner moments, dqn-loop, clips gate, and trace inspection."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_nb", WORKSHOP / "build_nb.py")
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    dest = tmp_path / "colab_workshop.ipynb"
+    spec.loader.exec_module(mod)
+    mod.OUT = dest
+    mod.cells.clear()
+    mod.main()
+    joined = "\n".join("".join(c.get("source") or []) for c in json.loads(dest.read_text()).get("cells") or [])
+    ch5 = _chapter_slice(joined, 5, 6)
+    ch6 = _chapter_slice(joined, 6, 7)
+
+    order = ("dqn-loop", "dqn-q-values", "dqn-bellman", "dqn-replay", "dqn-target")
+    positions = [ch5.index(f"{name}.svg") for name in order]
+    assert positions == sorted(positions)
+    assert "dqn-loop.svg" in ch5
+    assert ch5.index("dqn-encoders.svg") > ch5.index("mario-pretrained.mp4")
+
+    assert "# @title Predict RIGHT vs RIGHT+A" in ch5
+    assert "record_guess" in ch5
+    assert "NEXT_Q_RIGHT" in ch5 and "GAMMA" in ch5 and "PREDICTED_Q" in ch5
+    assert "EPSILON" in ch5 and "random.Random(SEED)" in ch5
+    assert ch5.index("Which clip travels farthest") < ch5.index("mario-untrained.mp4")
+    assert ch5.index("ask(") < ch5.index("mario-untrained.mp4")
+    assert ch5.index("mario-pretrained.mp4") < ch5.index("# @title Teacher knobs")
+    assert ch5.index("# @title Teacher knobs") < ch5.index("RUN_MARIO")
+
+    assert "# @title Inspect a trace before SFT" in ch6
+    assert ch6.index("select_episodes") < ch6.index("bake_pack")
+    assert ch6.index("export_sft_dataset") < ch6.index("bake_pack")
+    assert "not a training pair" in ch6
+    assert "raw rollout row" in ch6
+    assert "# @title Packs (optional hub)" in ch6
 
 
 def test_fresh_runtime_form_cells_do_not_shadow_game_after_knobs():

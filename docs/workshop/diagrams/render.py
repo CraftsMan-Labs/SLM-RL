@@ -341,19 +341,61 @@ def game_abc() -> str:
     return _svg(920, 200, row, "Custom game plugin path")
 
 
+def dqn_loop() -> str:
+    """Beginner play loop. The choice is a current guess, never an optimum."""
+    parts = [
+        f'<rect x="28" y="28" width="748" height="228" rx="12" fill="none" '
+        f'stroke="{LINE}" stroke-dasharray="5 4"/>',
+        f'<text x="44" y="50" fill="{SOFT}" font-family="Inter, Helvetica, sans-serif" '
+        f'font-size="12">agent looks and guesses</text>',
+        f'<rect x="800" y="56" width="196" height="200" rx="12" fill="none" '
+        f'stroke="{LINE}" stroke-dasharray="5 4"/>',
+        f'<text x="816" y="78" fill="{SOFT}" font-family="Inter, Helvetica, sans-serif" '
+        f'font-size="12">world replies</text>',
+        _node(48, 68, 140, 52, "state"),
+        _node(220, 68, 176, 52, "online network"),
+        _node(428, 68, 140, 52, "Q-values"),
+        _node(600, 68, 168, 52, "ε-greedy choice"),
+        _node(598, 168, 172, 64, "chosen action\ncurrent best guess"),
+        _node(816, 160, 164, 72, "environment"),
+        _node(48, 284, 220, 56, "reward + next state"),
+        _arrow(188, 94, 220, 94),
+        _arrow(396, 94, 428, 94),
+        _arrow(568, 94, 600, 94),
+        _arrow(684, 120, 684, 168),
+        _arrow(770, 200, 816, 196),
+        (
+            f'<path d="M 898 232 L 898 312 L 268 312" fill="none" '
+            f'stroke="{ACCENT}" stroke-width="1.6" marker-end="url(#arrow)"/>'
+        ),
+        (
+            f'<path d="M 48 312 L 16 312 L 16 94 L 48 94" fill="none" '
+            f'stroke="{ACCENT}" stroke-width="1.6" marker-end="url(#arrow)"/>'
+        ),
+        f'<text x="510" y="356" text-anchor="middle" fill="{MUTED}" '
+        f'font-family="Inter, Helvetica, sans-serif" font-size="13">'
+        f"Look, score every move, then pick. Sometimes try something new.</text>",
+    ]
+    return _svg(
+        1020,
+        376,
+        "".join(parts),
+        "DQN play loop: state, online network, Q-values, "
+        "epsilon-greedy choice, chosen action, environment, reward and next state",
+    )
+
+
 def dqn_q_values() -> str:
     parts = [
-        _node(40, 80, 150, 56, "state"),
-        _node(250, 24, 200, 40, "LEFT  →  0.2"),
-        _node(250, 76, 200, 40, "RIGHT →  0.4"),
-        _node(250, 128, 200, 40, "SHOOT →  0.8"),
-        _node(520, 80, 170, 56, "greedy: SHOOT"),
-        _arrow(190, 108, 250, 44),
-        _arrow(190, 108, 250, 96),
-        _arrow(190, 108, 250, 148),
-        _arrow(450, 148, 520, 108),
+        _node(40, 80, 150, 56, "Mario frame"),
+        _node(250, 52, 200, 40, "RIGHT → 0.4"),
+        _node(250, 116, 200, 40, "RIGHT+A → 0.8"),
+        _node(520, 80, 170, 56, "current guess:\nRIGHT+A"),
+        _arrow(190, 108, 250, 72),
+        _arrow(190, 108, 250, 136),
+        _arrow(450, 136, 520, 108),
     ]
-    return _svg(730, 210, "".join(parts), "Score every action, take the max")
+    return _svg(730, 210, "".join(parts), "Score Mario actions and choose the current best guess")
 
 
 def dqn_bellman() -> str:
@@ -453,6 +495,7 @@ RENDERERS = {
     "theater": theater,
     "publish": publish,
     "game-abc": game_abc,
+    "dqn-loop": dqn_loop,
     "dqn-q-values": dqn_q_values,
     "dqn-bellman": dqn_bellman,
     "dqn-replay": dqn_replay,
