@@ -79,8 +79,10 @@ Challenge cells are extra; skip those and the rest still runs.
 Run it side-by-side with the Vue deck. Each chapter heading names the matching
 slides (`Presentation: …`). Pipeline diagrams are static SVGs, not Mermaid
 source. Deck stills and short clips live in `docs/workshop/assets/deck` so Colab
-can load them from this repo. Chapter 5 has an optional Mario DQN demo for
-intuition; the Atari RAM-vector teacher remains the critical path.
+can load them from this repo. Chapter 5 walks DQN on World 1-1 with recorded
+improvement clips, then an optional live Mario demo; Chapter 6 explains how
+teacher traces become curated SFT pairs. The Atari RAM-vector teacher remains
+the critical path.
 
 Note that a T4 is Turing and has no bf16 support, so the CUDA path selects fp16
 by capability (`bf16_ok()` in `slm_rl/training/lora.py`); bf16 is used only on

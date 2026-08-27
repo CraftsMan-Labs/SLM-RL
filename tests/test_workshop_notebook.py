@@ -160,6 +160,9 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "Presentation: cover → join-lobby" in joined
     assert "**Goal.**" in joined
     assert "RUN_MARIO" in joined
+    assert "target = reward + γ × best next Q" in joined
+    assert "mario-pretrained.mp4" in joined
+    assert "select_episodes" in joined
     assert "docs/workshop/assets/diagrams/evolve-loop.svg" in joined
     assert "docs/workshop/assets/deck/HeroVisual.png" in joined
     assert "docs/workshop/assets/deck/meet-the-teacher.mp4" in joined
@@ -208,6 +211,8 @@ def test_notebook_diagram_refs_resolve():
         "dqn-replay",
         "dqn-target",
         "dqn-encoders",
+        "dqn-math",
+        "trace-to-pair",
         "packs",
         "train-strategies",
         "eval-gate",
@@ -219,11 +224,17 @@ def test_notebook_diagram_refs_resolve():
         assert f"{name}.svg" in joined
         assert (dest / f"{name}.svg").is_file()
     from import_deck_assets import DECK_FILES
+    from mario_lab import CLIP_FILES
 
     deck = WORKSHOP / "assets" / "deck"
     for name in DECK_FILES:
         assert name in joined
         assert (deck / name).is_file()
+    mario = WORKSHOP / "assets" / "mario"
+    for name in CLIP_FILES:
+        assert name in joined
+        assert (mario / name).is_file()
+        assert (mario / name).stat().st_size > 1000
 
 
 def test_workshop_diagrams_exist_and_are_svg():
@@ -247,6 +258,12 @@ def test_talk_track_headings_match_builder():
     for row in CHAPTERS:
         assert row["heading"] in joined
         assert row["goal"] in joined
+    ch5 = next(row for row in CHAPTERS if row["number"] == 5)
+    for slide_id in ("dqn-mario-intro", "dqn-math-overview", "dqn-mario-map"):
+        assert slide_id in ch5["slide_ids"]
+    ch6 = next(row for row in CHAPTERS if row["number"] == 6)
+    for slide_id in ("synthetic-homework", "trace-to-pair", "dataset-filters", "why-warmstart"):
+        assert slide_id in ch6["slide_ids"]
 
 
 def test_fresh_runtime_form_cells_do_not_shadow_game_after_knobs():

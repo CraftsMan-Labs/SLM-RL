@@ -404,6 +404,41 @@ def dqn_encoders() -> str:
     return _svg(700, 280, "".join(parts), "Same DQN, different eyes")
 
 
+def dqn_math() -> str:
+    parts = [
+        _node(24, 28, 150, 56, "reward r"),
+        _node(194, 28, 40, 56, "+"),
+        _node(254, 28, 200, 56, "γ × best next Q"),
+        _node(474, 28, 40, 56, "="),
+        _node(534, 28, 150, 56, "target"),
+        _node(24, 140, 200, 56, "predicted Q(s, a)"),
+        _node(254, 140, 200, 56, "vs"),
+        _node(484, 140, 200, 56, "target value"),
+        _arrow(224, 168, 254, 168),
+        _arrow(454, 168, 484, 168),
+        f'<text x="352" y="230" text-anchor="middle" fill="{MUTED}" '
+        f'font-family="Inter, Helvetica, sans-serif" font-size="13">'
+        f"Mario: a coin now plus almost all of the best jump after it. γ = 0.99.</text>",
+    ]
+    return _svg(720, 260, "".join(parts), "Bellman target in one line")
+
+
+def trace_to_pair() -> str:
+    parts = [
+        _node(24, 70, 150, 64, "DQN plays\nstate → action"),
+        _node(214, 70, 150, 64, "JSONL\ntrace row"),
+        _node(404, 70, 160, 64, "select\nclean + top"),
+        _node(604, 70, 170, 64, "SFT pair\nACTION: RIGHT"),
+        _arrow(174, 102, 214, 102),
+        _arrow(364, 102, 404, 102),
+        _arrow(564, 102, 604, 102),
+        f'<text x="400" y="176" text-anchor="middle" fill="{MUTED}" '
+        f'font-family="Inter, Helvetica, sans-serif" font-size="13">'
+        f"Machine-made homework. Not an eval label.</text>",
+    ]
+    return _svg(800, 210, "".join(parts), "Teacher trace to SFT pair")
+
+
 RENDERERS = {
     "evolve-loop": evolve_loop,
     "hardware-tier": hardware_tier,
@@ -423,6 +458,8 @@ RENDERERS = {
     "dqn-replay": dqn_replay,
     "dqn-target": dqn_target,
     "dqn-encoders": dqn_encoders,
+    "dqn-math": dqn_math,
+    "trace-to-pair": trace_to_pair,
 }
 
 

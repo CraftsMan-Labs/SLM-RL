@@ -224,4 +224,5 @@ web/dist/
 # SLM-RL run artifacts
 runs/
 datasets/
+docs/workshop/assets/mario/checkpoints/
 .claude/worktrees/

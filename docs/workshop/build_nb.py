@@ -29,6 +29,7 @@ ASSET_RAW = (
 )
 DIAGRAM_RAW = f"{ASSET_RAW}/diagrams"
 DECK_RAW = f"{ASSET_RAW}/deck"
+MARIO_RAW = f"{ASSET_RAW}/mario"
 
 cells: list[dict] = []
 
@@ -68,6 +69,14 @@ def deck_video(name: str, caption: str) -> None:
     """Short clip from the Vue deck. Colab markdown plays HTML5 video."""
     md(
         f'<video src="{DECK_RAW}/{name}" controls muted playsinline '
+        f'style="max-width:100%;height:auto"></video>\n\n*{caption}*'
+    )
+
+
+def mario_video(name: str, caption: str) -> None:
+    """World 1-1 clip recorded from checksummed public CNN checkpoints."""
+    md(
+        f'<video src="{MARIO_RAW}/{name}" controls muted playsinline '
         f'style="max-width:100%;height:auto"></video>\n\n*{caption}*'
     )
 
@@ -1027,13 +1036,19 @@ def chapter_5() -> None:
         "A 1.2B model has never played this title. A DQN has — small, fast, mute. It plays; the SLM studies the traces.\n\n"
         "Three seams (`docs/HYBRID_RL.md`): warm-start demos, Q-top-k menu prune, potential shaping. "
         "**Hard rule: teachers never touch eval.**\n\n"
-        "The deck now walks DQN the same way as GRPO: analogy first, then the loop "
-        "(game master → Q-values, leftover board → Bellman, flashcards → replay, tourist → ε-greedy). "
-        "After the Atari teacher cell, an optional Mario subsection shows the same loop on pixels. "
-        "It is gated: if the emulator or checkpoint is missing, a storyboard plus metrics still run.",
+        "The deck walks DQN the same way as GRPO: analogy first, then the loop, then Mario. "
+        "World 1-1 is the intuition surface — pixels, two buttons, real improvement clips. "
+        "After the Atari teacher cell, an optional live Mario subsection can stream Q-values. "
+        "It is gated: if the emulator is missing, the recorded clips plus storyboard still run.",
     )
     diagram_cell("dqn-hybrid", "DQN teacher writes homework; the SLM is examined without the teacher")
     deck_video("meet-the-teacher.mp4", "Meet the teacher — a mute DQN already knows useful moves.")
+    md(
+        """\
+**Mario is the intuition.** World 1-1, pixels in, two buttons (`RIGHT`, `RIGHT+A`). Same loop as the Atari teacher. Super Mario Bros is how we *see* the algorithm. The RAM-vector teacher is still the pipeline.
+"""
+    )
+    diagram_cell("dqn-encoders", "Pixels/CNN vs RAM-vector/MLP — same DQN loop")
     md(
         """\
 **Analogy first.** A game master does not play for you. They score every legal move and point. Those numbers are Q-values.
@@ -1073,6 +1088,34 @@ def chapter_5() -> None:
     deck_image(
         "dqn-tourist-then-regular.png",
         "ε-greedy: trust the learned route, but occasionally explore a side path.",
+    )
+    md(
+        """\
+**One line of math.** `target = reward + γ × best next Q`. Every symbol is a Mario habit:
+
+| Symbol | In words | On World 1-1 |
+|---|---|---|
+| `reward` | What just happened | Coin, progress right, or death |
+| `γ = 0.99` | Keep almost all of tomorrow | A jump that sets up the next pipe |
+| `best next Q` | Best action from the next frame | `RIGHT` vs `RIGHT+A` after landing |
+| `predicted Q` | What the net currently believes | The number it had before the step |
+
+The loss is just “predicted value versus target value.” No derivation on this page.
+"""
+    )
+    diagram_cell("dqn-math", "target = reward + γ × best next Q. Predicted value chases that target.")
+    md(
+        """\
+**On World 1-1.** Same four habits: score `RIGHT` vs `RIGHT+A`, backup today-plus-tomorrow, shuffle replay against a frozen key, wander then trust.
+
+Recorded clips below are real emulator play from checksummed public CNN checkpoints — not a storyboard.
+"""
+    )
+    mario_video("mario-untrained.mp4", "Untrained — random weights, dies at the first Goomba (x≈296).")
+    mario_video("mario-mid.mp4", "Mid checkpoint — starts jumping, still dies early.")
+    mario_video(
+        "mario-pretrained.mp4",
+        "Pretrained — clears the first pit and reaches the first pipe (x≈594).",
     )
 
     challenge(
@@ -1170,14 +1213,13 @@ print(
 
     md(
         """\
-### Optional — Mario DQN intuition
+### Optional — live Mario DQN
 
-Same algorithm, different eyes. Mario sees stacked pixels through a CNN. The SLM-RL teacher sees `Game.vector_obs()` through an MLP (`GAMMA=0.99`, replay, target sync, ε-greedy in `slm_rl/teachers/dqn.py`).
+Same algorithm, different eyes. The clips above already show improvement. This cell can load the same CNN, stream Q-values, and run a short Bellman update. The SLM-RL teacher still sees `Game.vector_obs()` through an MLP.
 
 Leave `RUN_MARIO` unchecked to skip. A failure here must not break Chapter 6.
 """
     )
-    diagram_cell("dqn-encoders", "Pixels/CNN vs RAM-vector/MLP — same DQN loop")
 
     code(
         r'''# @title Mario DQN (optional)
@@ -1253,10 +1295,28 @@ else:
 def chapter_6() -> None:
     chapter_open(
         6,
-        "Teacher demos + `dqn.pt` in one folder so a workshop shares homework instead of everyone training the same DQN.\n\n"
+        "The mute DQN just wrote machine-generated demonstrations — synthetic homework, not exam labels.\n\n"
+        "We curate those traces into SFT pairs (`select_episodes` in `sft_export.py`), then bake a pack so the room shares one textbook. "
+        "Gen-1 SFT is a warm start: it teaches the action alphabet. The eval gate comes later.\n\n"
         "This cell reuses Chapter 5's checkpoint (`dqn_decisions=0`). Push is **off** unless you tick the form and set a repo.",
     )
+    diagram_cell("trace-to-pair", "DQN play → JSONL row → select → ACTION pair")
+    md(
+        """\
+**Why synthetic homework?** A 1.2B model has never played this title. The DQN has. Each useful episode is `state → action → reward`. We do **not** ask a human to label frames, and we do **not** let the teacher sit the exam.
+
+**Curation (`slm_rl/datagen/sft_export.py`):**
+
+1. Drop monitor-flagged doom loops.
+2. Keep wins and the top return quantile (QUICK keeps more; FULL keeps ~25%).
+3. Cap identical action sequences so the book is not twenty copies of the same dash.
+4. Strip `Q-values rank…` from DQN completions — the SLM copies `ACTION: RIGHT`, not a fake ranking.
+
+**Why SFT first?** Orientation, then play. SFT teaches valid `ACTION:` lines. RLVR / GRPO explore after the model can move. Generation 1 is adopted as a warm start (D12) — it is not competing at the eval gate.
+"""
+    )
     diagram_cell("packs", "bake_pack → disk → Hugging Face → resolve_pack")
+    diagram_cell("dqn-hybrid", "Teacher writes homework; the frozen exam never sees the teacher")
 
     code(
         r'''# @title Packs (optional hub)
@@ -2205,8 +2265,8 @@ Talk track (deck on one screen, this notebook on the other):
 | 2 Config | notebook-led; deck stays on the story |
 | 3 Model plays | journey → journey-tech |
 | 4 Dataset | rl-loop → sft-vs-rl → why-sft-first |
-| 5 Teachers | dqn → dqn-analogy → mechanism slides → dqn-mario → teacher-dataset |
-| 6 Packs | workshop-flow |
+| 5 Teachers | dqn → mario intro → analogies → math → clips → teacher-dataset |
+| 6 Packs | synthetic-homework → trace-to-pair → dataset-filters → why-warmstart |
 | 7 Training | gen-0-1 → GRPO slides |
 | 8 Gate | promote-reject → eval-gate |
 | 9 Evolve | self-improve → champion-rollouts |

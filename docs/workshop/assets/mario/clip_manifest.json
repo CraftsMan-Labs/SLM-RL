@@ -1,0 +1,64 @@
+{
+  "source": {
+    "repo": "https://github.com/alanfrancis442/mario-ai",
+    "architecture": "Nature DQN CNN, 4\u00d784\u00d784 \u2192 RIGHT / RIGHT+A",
+    "license": "educational weights; Super Mario Bros is owned by Nintendo"
+  },
+  "fps": 30,
+  "skip_frames": 4,
+  "seed": 0,
+  "metrics": [
+    {
+      "stage": "untrained",
+      "label": "Untrained",
+      "note": "falls in the first pit",
+      "decisions": 0,
+      "decisions_taken": 40,
+      "x_pos": 296,
+      "mean_ep_reward": 5.775,
+      "q_values": [
+        0.011,
+        -0.018
+      ],
+      "checkpoint": "random",
+      "clip": "mario-untrained.mp4",
+      "sha256": "fd4b923f58144d020bd373eef580c42a510d9dc5587bb57ed68cd4fac5548414",
+      "bytes": 19684
+    },
+    {
+      "stage": "mid",
+      "label": "Mid",
+      "note": "holds right, clears a pipe",
+      "decisions": 20000,
+      "decisions_taken": 40,
+      "x_pos": 296,
+      "mean_ep_reward": 5.775,
+      "q_values": [
+        -0.037,
+        0.015
+      ],
+      "checkpoint": "mario_mid.chkpt",
+      "clip": "mario-mid.mp4",
+      "sha256": "ac2140a13fb3b567b7749ffb6e5082cc28bc515a9846e79f6ff46d86d036926a",
+      "bytes": 19440
+    },
+    {
+      "stage": "pretrained",
+      "label": "Pretrained",
+      "note": "clears the first pit and reaches the first pipe",
+      "decisions": 250000,
+      "decisions_taken": 180,
+      "x_pos": 594,
+      "mean_ep_reward": 2.922,
+      "q_values": [
+        -0.019,
+        -0.02
+      ],
+      "checkpoint": "mario_pretrained.chkpt",
+      "clip": "mario-pretrained.mp4",
+      "sha256": "d626fcffeb937c3eb78805ceb86ebe2b0c9e788f98d7dc2233c3dd5778f8813d",
+      "bytes": 31425,
+      "clip_seconds": 10
+    }
+  ]
+}
