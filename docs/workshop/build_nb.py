@@ -114,7 +114,7 @@ def chapter_0() -> None:
 <p>
 <img src="https://raw.githubusercontent.com/CraftsMan-Labs/SLM-RL/main/docs/workshop/logo-agentics.svg" height="40" alt="Agentics Foundation"/>
 &nbsp;&nbsp;&nbsp;
-<img src="https://raw.githubusercontent.com/CraftsMan-Labs/SLM-RL/main/docs/workshop/logo-conscious-engines.svg" height="40" alt="Conscious Engines"/>
+<img src="https://raw.githubusercontent.com/CraftsMan-Labs/SLM-RL/main/docs/workshop/logo-ideas2it.svg" height="40" alt="Ideas2IT"/>
 </p>
 
 A small language model plays text-Atari, trains on its own games, and keeps the weights **only** if they beat the last champion.
