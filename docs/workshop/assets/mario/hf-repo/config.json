@@ -1,0 +1,19 @@
+{
+  "architecture": "Nature DQN CNN",
+  "observation": {
+    "height": 84,
+    "width": 84,
+    "stack": 4,
+    "color": "grayscale",
+    "scale": "0-1"
+  },
+  "actions": [
+    ["right"],
+    ["right", "A"]
+  ],
+  "action_names": ["RIGHT", "RIGHT+A"],
+  "gamma": 0.99,
+  "skip_frames": 4,
+  "learning_rate": 0.00025,
+  "env_id": "SuperMarioBros-1-1-v0"
+}

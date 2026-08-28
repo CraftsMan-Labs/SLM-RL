@@ -1,0 +1,12 @@
+{
+  "warm-start": {
+    "label": "Mid / warm-start",
+    "x_pos": "early World 1-1",
+    "note": "starts jumping, still dies early"
+  },
+  "final": {
+    "label": "Pretrained / final",
+    "x_pos": 594,
+    "note": "clears the first pit and reaches the first pipe"
+  }
+}

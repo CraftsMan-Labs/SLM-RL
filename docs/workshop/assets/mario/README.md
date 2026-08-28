@@ -1,8 +1,8 @@
 # Mario DQN assets
 
-Used to teach DQN intuition on Super Mario Bros. World 1-1. The live
-Colab path is optional. Chapter 5's Atari RAM-vector teacher is the
-workshop critical path.
+Used to teach DQN intuition on Super Mario Bros. World 1-1. Chapter 5 can train a pixel CNN live and evaluate it for a user-set
+step budget. Recorded clips remain the fallback. The Atari RAM-vector
+teacher is still the workshop critical path.
 
 ## Recorded clips
 
@@ -21,8 +21,13 @@ Refresh (needs `gym-super-mario-bros`, `nes-py`, `torch`, `ffmpeg`):
 python docs/workshop/record_mario_clips.py
 ```
 
-Checkpoints download into `checkpoints/` (gitignored). Weights are
-educational; Nintendo owns Super Mario Bros.
+Checkpoints download into `checkpoints/` (gitignored). Prefer the public
+Hugging Face repo `CraftsMan-Labs/mario-dqn-workshop` (`hf-repo/` is the
+upload template). GitHub staged files stay the checksummed fallback.
+
+Weights are educational; Nintendo owns Super Mario Bros.
+
+A T4 smoke checklist lives in `SMOKE_TEST.md`.
 
 ## Fallback
 

@@ -12,10 +12,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
+import time
+from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.request import urlopen
 
 # Pinned for Colab (usually 3.11/3.12) vs modern CPython (3.13+).
@@ -29,13 +32,29 @@ MODERN_PACKAGES = (
     "nes-py>=9.0.1",
 )
 
-# Public Nature-style CNN checkpoints from alanfrancis442/mario-ai
-# (4×84×84, RIGHT / RIGHT+A). Educational weights; Nintendo owns SMB.
+# Public Nature-style CNN checkpoints. Prefer the workshop Hugging Face
+# repo; GitHub staged files remain the verified fallback.
+DEFAULT_MARIO_MODEL_REPO = "CraftsMan-Labs/mario-dqn-workshop"
+DEFAULT_MARIO_MODEL_REVISION = "main"
 CHECKPOINT_SOURCE = {
-    "repo": "https://github.com/alanfrancis442/mario-ai",
+    "repo": DEFAULT_MARIO_MODEL_REPO,
+    "fallback_repo": "https://github.com/alanfrancis442/mario-ai",
     "architecture": "Nature DQN CNN, 4×84×84 → RIGHT / RIGHT+A",
     "license": "educational weights; Super Mario Bros is owned by Nintendo",
 }
+LOCAL_TRAINED_NAME = "local-trained.chkpt"
+TRAIN_MINUTES_RANGE = (1.0, 20.0)
+EVAL_STEPS_RANGE = (100, 50_000)
+EVAL_INTERVAL_RANGE = (50, 2_000)
+DEFAULT_TRAIN_MINUTES = 15.0
+DEFAULT_EVAL_STEPS = 10_000
+DEFAULT_EVAL_INTERVAL = 400
+BUFFER_CAPACITY = 20_000
+BATCH_SIZE = 32
+TARGET_SYNC_EVERY = 250
+MIN_REPLAY = 200
+EPS_DECAY_DECISIONS = 50_000
+CPU_TRAIN_MINUTES = 5.0
 
 STAGED_CHECKPOINTS: tuple[dict[str, Any], ...] = (
     {
@@ -76,6 +95,23 @@ STAGED_CHECKPOINTS: tuple[dict[str, Any], ...] = (
     },
 )
 
+# Named workshop checkpoints. SHA-256 matches the GitHub staged files so
+# the same blobs can be uploaded to Hugging Face without relabeling.
+HF_CHECKPOINTS: dict[str, dict[str, Any]] = {
+    "warm-start": {
+        "filename": "warm-start.chkpt",
+        "sha256": STAGED_CHECKPOINTS[1]["sha256"],
+        "fallback_stage": "mid",
+        "note": "early World 1-1 play; workshop live-training default",
+    },
+    "final": {
+        "filename": "final.chkpt",
+        "sha256": STAGED_CHECKPOINTS[2]["sha256"],
+        "fallback_stage": "pretrained",
+        "note": "later World 1-1 play; public evaluation default",
+    },
+}
+
 # Optional hosted checkpoint for the live Colab cell. Empty means "use the
 # pretrained staged file if already downloaded, else random weights."
 CHECKPOINT_URL = STAGED_CHECKPOINTS[-1]["url"]
@@ -108,6 +144,33 @@ def pinned_packages() -> tuple[str, ...]:
     if sys.version_info >= (3, 13):
         return MODERN_PACKAGES
     return LEGACY_PACKAGES
+
+
+def ensure_mario_packages(*, install: bool = False) -> tuple[bool, str]:
+    """Return (ok, reason). pip only runs when ``install`` is True."""
+    env, err = try_make_mario_env()
+    if env is not None:
+        try:
+            env.close()
+        except Exception:
+            pass
+        return True, "already installed"
+    if not install:
+        return False, err or "mario env unavailable"
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-q", *pinned_packages()]
+        )
+    except Exception as exc:  # noqa: BLE001
+        return False, f"pip install failed: {exc}"
+    env, err = try_make_mario_env()
+    if env is None:
+        return False, err or "still unavailable after install"
+    try:
+        env.close()
+    except Exception:
+        pass
+    return True, "installed"
 
 
 def staged_checkpoint(stage: str) -> dict[str, Any]:
@@ -689,3 +752,511 @@ def pretrained_hash_mismatch(path: Path) -> bool:
     if not expected:
         return False
     return not verify_checkpoint(Path(path), expected)
+
+
+def _clamp_float(value: Any, lo: float, hi: float, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(lo, min(hi, parsed))
+
+
+def _clamp_int(value: Any, lo: int, hi: int, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(lo, min(hi, parsed))
+
+
+def hf_checkpoint_spec(name: str) -> dict[str, Any]:
+    if name not in HF_CHECKPOINTS:
+        raise KeyError(name)
+    return dict(HF_CHECKPOINTS[name])
+
+
+def download_hf_checkpoint(
+    dest: Path,
+    *,
+    repo_id: str = DEFAULT_MARIO_MODEL_REPO,
+    filename: str,
+    revision: str = DEFAULT_MARIO_MODEL_REVISION,
+    sha256: str = "",
+) -> Path | None:
+    """Download one public file, pin a revision, and verify SHA-256."""
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_file() and (not sha256 or verify_checkpoint(dest, sha256)):
+        return dest
+    try:
+        from huggingface_hub import hf_hub_download
+    except Exception as exc:  # noqa: BLE001
+        print(f"huggingface_hub unavailable: {exc}")
+        return None
+    try:
+        cached = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            revision=revision,
+            token=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"HF download failed ({repo_id}@{revision}/{filename}): {exc}")
+        return None
+    src = Path(cached)
+    if not src.is_file():
+        return None
+    if sha256 and not verify_checkpoint(src, sha256):
+        print("HF checkpoint checksum mismatch; ignoring file")
+        return None
+    if src.resolve() != dest.resolve():
+        shutil.copy2(src, dest)
+    return dest
+
+
+def resolve_named_checkpoint(
+    name: str,
+    workdir: Path,
+    *,
+    repo_id: str = DEFAULT_MARIO_MODEL_REPO,
+    revision: str = DEFAULT_MARIO_MODEL_REVISION,
+) -> tuple[Path | None, str]:
+    """Resolve warm-start / final via HF, then the staged GitHub fallback."""
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    if name == "local-trained":
+        local = workdir / LOCAL_TRAINED_NAME
+        if local.is_file():
+            return local, "local-trained"
+        return None, "local-trained checkpoint missing"
+    spec = hf_checkpoint_spec(name)
+    dest = workdir / spec["filename"]
+    hf = download_hf_checkpoint(
+        dest,
+        repo_id=repo_id,
+        filename=spec["filename"],
+        revision=revision,
+        sha256=str(spec.get("sha256") or ""),
+    )
+    if hf is not None:
+        return hf, f"hf:{repo_id}/{spec['filename']}@{revision}"
+    fallback = staged_checkpoint(str(spec["fallback_stage"]))
+    path = resolve_staged_checkpoint(fallback, workdir)
+    if path is None:
+        return None, f"{name} unavailable (HF and GitHub fallback failed)"
+    return path, f"github-fallback:{fallback['stage']}"
+
+
+def save_training_checkpoint(
+    path: Path,
+    q_net: Any,
+    target: Any,
+    optimizer: Any,
+    meta: dict[str, Any],
+) -> Path:
+    import torch
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "online": q_net.state_dict(),
+            "target": target.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "meta": dict(meta),
+        },
+        path,
+    )
+    return path
+
+
+def load_training_checkpoint(
+    q_net: Any,
+    path: Path,
+    *,
+    target: Any = None,
+    optimizer: Any = None,
+) -> dict[str, Any]:
+    import torch
+
+    payload = torch.load(Path(path), map_location="cpu", weights_only=False)
+    if isinstance(payload, dict) and "online" in payload and "meta" in payload:
+        q_net.load_state_dict(payload["online"])
+        if target is not None and payload.get("target") is not None:
+            target.load_state_dict(payload["target"])
+        if optimizer is not None and payload.get("optimizer") is not None:
+            try:
+                optimizer.load_state_dict(payload["optimizer"])
+            except Exception:
+                pass
+        return dict(payload.get("meta") or {})
+    load_qnet_weights(q_net, Path(path))
+    return {}
+
+
+def maybe_copy_to_drive(src: Path, *, enabled: bool) -> str:
+    if not enabled:
+        return ""
+    drive = Path("/content/drive/MyDrive/slm-rl-mario")
+    if not drive.parent.parent.is_dir():
+        return "Drive not mounted"
+    try:
+        drive.mkdir(parents=True, exist_ok=True)
+        dest = drive / src.name
+        shutil.copy2(src, dest)
+        return str(dest)
+    except Exception as exc:  # noqa: BLE001
+        return f"Drive copy failed: {exc}"
+
+
+def epsilon_at(decisions: int) -> float:
+    t = min(1.0, max(0, decisions) / float(EPS_DECAY_DECISIONS))
+    return EPS_START + (EPS_END - EPS_START) * t
+
+
+def _device_and_budget(train_minutes: float) -> tuple[Any, float, str]:
+    import torch
+
+    minutes = _clamp_float(train_minutes, *TRAIN_MINUTES_RANGE, DEFAULT_TRAIN_MINUTES)
+    if torch.cuda.is_available():
+        return torch.device("cuda"), minutes, "cuda"
+    return torch.device("cpu"), min(minutes, CPU_TRAIN_MINUTES), "cpu"
+
+
+def train_mario_live(
+    workdir: Path,
+    *,
+    training_mode: str = "warm-start",
+    train_minutes: float = DEFAULT_TRAIN_MINUTES,
+    eval_interval: int = DEFAULT_EVAL_INTERVAL,
+    seed: int = 0,
+    save_to_drive: bool = False,
+    repo_id: str = DEFAULT_MARIO_MODEL_REPO,
+    revision: str = DEFAULT_MARIO_MODEL_REVISION,
+    on_progress: Callable[[dict[str, Any]], None] | None = None,
+    collect_eval_frames: bool = False,
+    max_decisions: int | None = None,
+    eval_decisions: int = 80,
+) -> dict[str, Any]:
+    """Chunked DQN updates. Always returns a result dict."""
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    mode = "warm-start" if str(training_mode).strip().lower() != "from-scratch" else "from-scratch"
+    interval = _clamp_int(eval_interval, *EVAL_INTERVAL_RANGE, DEFAULT_EVAL_INTERVAL)
+    result: dict[str, Any] = {
+        "mode": "fallback",
+        "reason": "",
+        "training_mode": mode,
+        "history": [],
+        "checkpoint": None,
+        "drive_copy": "",
+        "action_names": list(ACTION_NAMES),
+        "encoder": "pixels → CNN",
+        "teacher_encoder": "RAM vector → MLP",
+        "fallback": {k: str(v) for k, v in fallback_paths().items()},
+        "clips": {k: str(v) for k, v in clip_paths().items() if v.is_file()},
+    }
+
+    env, err = try_make_mario_env()
+    if env is None:
+        result["reason"] = err or "mario env unavailable"
+        result["fallback_metrics"] = load_fallback_metrics()
+        return result
+
+    try:
+        import torch
+        import torch.nn.functional as F
+
+        device, minutes, device_name = _device_and_budget(train_minutes)
+        result["device"] = device_name
+        result["train_minutes"] = minutes
+        q_net = make_qnet(CHECKPOINT_N_ACTIONS).to(device)
+        target = make_qnet(CHECKPOINT_N_ACTIONS).to(device)
+        opt = torch.optim.Adam(q_net.parameters(), lr=LEARNING_RATE)
+        decisions = 0
+        source = "from-scratch"
+        ckpt: Path | None = workdir / LOCAL_TRAINED_NAME
+        if ckpt.is_file():
+            meta = load_training_checkpoint(q_net, ckpt, target=target, optimizer=opt)
+            decisions = int(meta.get("decisions") or 0)
+            source = "local-resume"
+        elif mode == "warm-start":
+            ckpt, source = resolve_named_checkpoint(
+                "warm-start", workdir, repo_id=repo_id, revision=revision
+            )
+            if ckpt is not None:
+                load_training_checkpoint(q_net, ckpt)
+                decisions = int(staged_checkpoint("mid")["decisions"])
+            else:
+                result["reason"] = source
+                result["fallback_metrics"] = load_fallback_metrics()
+                return result
+        target.load_state_dict(q_net.state_dict())
+        target.eval()
+
+        rng = torch.Generator(device="cpu")
+        rng.manual_seed(int(seed))
+        replay: deque[tuple[Any, int, float, Any, bool]] = deque(maxlen=BUFFER_CAPACITY)
+        deadline = time.monotonic() + minutes * 60.0
+        obs = _reset(env)
+        frames = [preprocess_frame(obs)]
+        deaths = 0
+        last_loss = 0.0
+        history: list[dict[str, Any]] = []
+        next_eval = interval
+        chunk_reward = 0.0
+
+        def evaluate_now() -> dict[str, Any]:
+            play = play_mario_policy(
+                env,
+                q_net,
+                device=device,
+                decisions=max(1, int(eval_decisions)),
+                seed=seed,
+                collect_frames=collect_eval_frames,
+            )
+            return {
+                "max_x_pos": play["max_x_pos"],
+                "sum_reward": play["sum_reward"],
+                "decisions_taken": play["decisions_taken"],
+                "q_values": play["q_values"],
+                "frames": play.get("frames") or [],
+            }
+
+        q_net.train()
+        while time.monotonic() < deadline:
+            if max_decisions is not None and decisions >= max_decisions:
+                break
+            stacked = stack_frames(frames)
+            tensor = torch.tensor(stacked, dtype=torch.float32, device=device).unsqueeze(0)
+            eps = epsilon_at(decisions)
+            if float(torch.rand((), generator=rng)) < eps:
+                action = int(torch.randint(0, CHECKPOINT_N_ACTIONS, (1,), generator=rng).item())
+            else:
+                with torch.no_grad():
+                    action = int(torch.argmax(q_net(tensor)[0]).item())
+            nxt_obs, reward, done, _info, _skipped = _step_skip(env, action)
+            nxt = preprocess_frame(nxt_obs)
+            replay.append((stacked, action, float(reward), stack_frames(frames + [nxt]), bool(done)))
+            frames.append(nxt)
+            chunk_reward += float(reward)
+            decisions += 1
+            if done:
+                deaths += 1
+                obs = _reset(env)
+                frames = [preprocess_frame(obs)]
+
+            if len(replay) >= MIN_REPLAY:
+                idx = torch.randint(0, len(replay), (min(BATCH_SIZE, len(replay)),), generator=rng)
+                batch = [replay[int(j)] for j in idx.tolist()]
+                obs_b = torch.tensor([b[0] for b in batch], dtype=torch.float32, device=device)
+                act_b = torch.tensor([b[1] for b in batch], dtype=torch.int64, device=device)
+                rew_b = torch.tensor([b[2] for b in batch], dtype=torch.float32, device=device)
+                nxt_b = torch.tensor([b[3] for b in batch], dtype=torch.float32, device=device)
+                done_b = torch.tensor([b[4] for b in batch], dtype=torch.float32, device=device)
+                q = q_net(obs_b).gather(1, act_b.unsqueeze(1)).squeeze(1)
+                with torch.no_grad():
+                    next_q = target(nxt_b).max(1).values
+                    target_q = rew_b + GAMMA * next_q * (1.0 - done_b)
+                loss = F.smooth_l1_loss(q, target_q)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                last_loss = float(loss.item())
+                if decisions % TARGET_SYNC_EVERY == 0:
+                    target.load_state_dict(q_net.state_dict())
+
+            if decisions >= next_eval or time.monotonic() >= deadline:
+                eval_row = evaluate_now()
+                row = {
+                    "decisions": decisions,
+                    "epsilon": round(epsilon_at(decisions), 4),
+                    "loss": round(last_loss, 4),
+                    "chunk_reward": round(chunk_reward, 3),
+                    "deaths": deaths,
+                    "eval": {
+                        "max_x_pos": eval_row["max_x_pos"],
+                        "sum_reward": eval_row["sum_reward"],
+                        "decisions_taken": eval_row["decisions_taken"],
+                        "q_values": eval_row["q_values"],
+                    },
+                }
+                history.append(row)
+                if on_progress is not None:
+                    payload = dict(row)
+                    payload["frames"] = eval_row.get("frames") or []
+                    on_progress(payload)
+                chunk_reward = 0.0
+                next_eval = decisions + interval
+                obs = _reset(env)
+                frames = [preprocess_frame(obs)]
+
+        local = save_training_checkpoint(
+            workdir / LOCAL_TRAINED_NAME,
+            q_net,
+            target,
+            opt,
+            {"decisions": decisions, "epsilon": epsilon_at(decisions), "training_mode": mode},
+        )
+        result.update(
+            {
+                "mode": "live",
+                "reason": f"{mode} train on {device_name} ({source})",
+                "source": source,
+                "history": history,
+                "checkpoint": str(local),
+                "decisions": decisions,
+                "deaths": deaths,
+                "drive_copy": maybe_copy_to_drive(local, enabled=save_to_drive),
+            }
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        result["mode"] = "fallback"
+        result["reason"] = f"live train failed: {exc}"
+        result["fallback_metrics"] = load_fallback_metrics()
+        return result
+    finally:
+        try:
+            env.close()
+        except Exception:
+            pass
+
+
+def evaluate_mario(
+    workdir: Path,
+    *,
+    eval_source: str = "local-trained",
+    eval_steps: int = DEFAULT_EVAL_STEPS,
+    seed: int = 0,
+    repo_id: str = DEFAULT_MARIO_MODEL_REPO,
+    revision: str = DEFAULT_MARIO_MODEL_REVISION,
+    collect_frames: bool = True,
+    frame_stride: int = 4,
+    on_frame: Callable[[Any], None] | None = None,
+) -> dict[str, Any]:
+    """Greedy evaluation. ``eval_steps`` is a raw emulator-frame budget."""
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    steps = _clamp_int(eval_steps, *EVAL_STEPS_RANGE, DEFAULT_EVAL_STEPS)
+    source_name = "public-final" if str(eval_source).strip().lower() == "public-final" else "local-trained"
+    result: dict[str, Any] = {
+        "mode": "fallback",
+        "reason": "",
+        "eval_source": source_name,
+        "eval_steps": steps,
+        "total_reward": 0.0,
+        "farthest_distance": 0,
+        "deaths": 0,
+        "completed_episodes": 0,
+        "best_attempt": 0,
+        "episodes": [],
+        "video": None,
+        "frames": [],
+        "fallback": {k: str(v) for k, v in fallback_paths().items()},
+        "clips": {k: str(v) for k, v in clip_paths().items() if v.is_file()},
+    }
+
+    if source_name == "local-trained":
+        ckpt, source = resolve_named_checkpoint("local-trained", workdir)
+        if ckpt is None:
+            ckpt, source = resolve_named_checkpoint(
+                "warm-start", workdir, repo_id=repo_id, revision=revision
+            )
+    else:
+        ckpt, source = resolve_named_checkpoint(
+            "final", workdir, repo_id=repo_id, revision=revision
+        )
+    result["checkpoint_source"] = source
+    if ckpt is None:
+        result["reason"] = source
+        result["fallback_metrics"] = load_fallback_metrics()
+        return result
+
+    env, err = try_make_mario_env()
+    if env is None:
+        result["reason"] = err or "mario env unavailable"
+        result["fallback_metrics"] = load_fallback_metrics()
+        return result
+
+    try:
+        import numpy as np
+        import torch
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        q_net = make_qnet(CHECKPOINT_N_ACTIONS).to(device)
+        load_training_checkpoint(q_net, ckpt)
+        q_net.eval()
+
+        remaining = steps
+        episodes: list[dict[str, Any]] = []
+        rgb_frames: list[Any] = []
+        total_reward = 0.0
+        farthest = 0
+        deaths = 0
+        while remaining > 0:
+            decisions = max(1, remaining // max(SKIP_FRAMES, 1))
+            play = play_mario_policy(
+                env,
+                q_net,
+                device=device,
+                decisions=decisions,
+                seed=seed + len(episodes),
+                collect_frames=collect_frames,
+            )
+            used = play["decisions_taken"] * SKIP_FRAMES
+            remaining -= max(used, 1)
+            total_reward += float(play["sum_reward"])
+            farthest = max(farthest, int(play["max_x_pos"]))
+            deaths += 1
+            episodes.append(
+                {
+                    "reward": play["sum_reward"],
+                    "max_x_pos": play["max_x_pos"],
+                    "decisions_taken": play["decisions_taken"],
+                    "q_values": play["q_values"],
+                }
+            )
+            if collect_frames:
+                for i, frame in enumerate(play.get("frames") or []):
+                    if i % max(1, frame_stride) != 0:
+                        continue
+                    arr = np.asarray(frame)
+                    rgb_frames.append(arr)
+                    if on_frame is not None:
+                        on_frame(arr)
+            if play["decisions_taken"] < decisions:
+                continue
+            break
+
+        video_path = workdir / f"eval-{source_name}.mp4"
+        encoded = encode_mp4(rgb_frames, video_path) if rgb_frames else False
+        best = max((row["max_x_pos"] for row in episodes), default=0)
+        result.update(
+            {
+                "mode": "live",
+                "reason": f"evaluated {source_name} from {source}",
+                "checkpoint": str(ckpt),
+                "total_reward": round(total_reward, 3),
+                "farthest_distance": farthest,
+                "deaths": deaths,
+                "completed_episodes": deaths,
+                "best_attempt": best,
+                "episodes": episodes,
+                "video": str(video_path) if encoded else None,
+                "frames": [] if encoded else rgb_frames[:: max(1, len(rgb_frames) // 12 or 1)][:12],
+                "device": str(device),
+            }
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        result["mode"] = "fallback"
+        result["reason"] = f"evaluate failed: {exc}"
+        result["fallback_metrics"] = load_fallback_metrics()
+        return result
+    finally:
+        try:
+            env.close()
+        except Exception:
+            pass

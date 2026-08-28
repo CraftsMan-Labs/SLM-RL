@@ -627,6 +627,7 @@ def chapter_1() -> None:
         1,
         "Atari as **text**. The model never sees pixels — RAM becomes a short description plus a numbered menu. "
         "SLMs are text-native; pixels would need a vision stack.\n\n"
+        "Play the title yourself first — clickable buttons, not a keyboard. Mario installs only if you pick it.\n\n"
         "Types you will keep seeing: `Observation`, `ActionSpec`, `StepResult`. "
         "Boxing YAML is 2500 turns; `QUICK` caps `GameConfig.max_turns` to 32.",
     )
@@ -658,7 +659,59 @@ for i, action in enumerate(obs.legal_actions, start=1):
     print(f"  {i}) id={action.id!r:16s}  label={action.label!r}")
 
 show_frame(ale_rgb(game), "pixels the model never sees — RAM is rendered as the text above", "ch1-reset")
-print("Pick a menu line in the next cell, then compare it with a random episode.")
+print("Play the game with clickable buttons next, then pick one typed menu line.")
+'''
+    )
+
+    md(
+        """\
+### Play before you train
+
+Click an action. Watch the frame, reward, and score move. This is the same game a DQN will later train on. Colab cannot capture a real-time keyboard, so the buttons step the env on purpose.
+
+Pick `mario` only when you want the NES emulator. That install is lazy and must not break Atari if it fails.
+"""
+    )
+
+    code(
+        r'''# @title Play before you train
+PLAY_GAME = "boxing"   # @param ["boxing", "space-invaders", "freeway", "demon-attack", "mario"]
+INSTALL_MARIO = True   # @param {type:"boolean"}
+
+from IPython.display import SVG, display
+from lab import require_names
+from playable import GamePanel, make_playable, show_game_panel
+
+require_names(globals(), "GAME")
+if "PLAY_PANEL" in globals() and PLAY_PANEL is not None:
+    try:
+        PLAY_PANEL.close()
+    except Exception:
+        pass
+
+PLAY_ENV, PLAY_ERROR = make_playable(
+    PLAY_GAME,
+    install_mario=bool(INSTALL_MARIO) and PLAY_GAME == "mario",
+)
+if PLAY_ENV is None:
+    print(f"playable {PLAY_GAME!r} unavailable: {PLAY_ERROR}")
+    PLAY_PANEL = None
+    if PLAY_GAME == "mario":
+        from mario_lab import fallback_paths
+
+        story = fallback_paths()["storyboard"]
+        if story.is_file():
+            display(SVG(filename=str(story)))
+        print("Atari is still available — set PLAY_GAME back to boxing / freeway / …")
+    else:
+        print("Re-run Chapter 1's first cell if the Atari env was not built yet.")
+else:
+    PLAY_PANEL = GamePanel(PLAY_ENV)
+    show_game_panel(PLAY_PANEL)
+    print(
+        f"what just happened: clickable controls for {PLAY_GAME}. "
+        "Reset starts over. Auto-repeat is capped so a click cannot run away."
+    )
 '''
     )
 
@@ -1038,8 +1091,8 @@ def chapter_5() -> None:
         "**Hard rule: teachers never touch eval.**\n\n"
         "Same pattern as the deck: idea → Mario → the name. "
         "Three short checkpoints (Q-values, Bellman, ε), then a pause before the clips. "
-        "World 1-1 is the evidence — recorded emulator play first. "
-        "The Atari teacher cell is the critical path; live Mario is optional and gated.",
+        "After the clips: train Mario live, then let a trained policy play for a user-set step budget. "
+        "The Atari teacher cell stays the critical path; live Mario falls back to recorded clips.",
     )
     diagram_cell("dqn-hybrid", "DQN teacher writes homework; the SLM is examined without the teacher")
     deck_video("meet-the-teacher.mp4", "Meet the teacher — a mute DQN already knows useful moves.")
@@ -1283,6 +1336,179 @@ print("clips next — real emulator play from checksummed public CNN checkpoints
 
     md(
         """\
+**Watch learning happen.** The clips are recorded evidence. The next cell does real DQN updates for a workshop-length budget. Default is a public warm-start so improvement is visible. From-scratch is allowed and will look weak.
+
+Loss is “prediction versus target,” not how far Mario ran.
+"""
+    )
+
+    code(
+        r'''# @title Train Mario live
+TRAINING_MODE = "warm-start"   # @param ["warm-start", "from-scratch"]
+TRAIN_MINUTES = 15             # @param {type:"slider", min:1, max:20, step:1}
+EVAL_INTERVAL = 400            # @param {type:"integer"}
+SAVE_TO_DRIVE = False          # @param {type:"boolean"}
+MARIO_MODEL_REPO = "CraftsMan-Labs/mario-dqn-workshop"  # @param {type:"string"}
+MARIO_MODEL_REVISION = "main"  # @param {type:"string"}
+
+from pathlib import Path
+
+from IPython.display import SVG, display
+from lab import clamp_float, clamp_int, require_names, scorecard
+from mario_lab import (
+    TRAIN_MINUTES_RANGE,
+    fallback_paths,
+    load_fallback_metrics,
+    train_mario_live,
+)
+
+require_names(globals(), "HOME", "SEED")
+minutes = clamp_float(TRAIN_MINUTES, TRAIN_MINUTES_RANGE[0], TRAIN_MINUTES_RANGE[1], "TRAIN_MINUTES")
+interval = clamp_int(EVAL_INTERVAL, 50, 2000, "EVAL_INTERVAL")
+MARIO_HOME = Path(HOME) / "mario-demo"
+if TRAINING_MODE == "from-scratch":
+    print("from-scratch: a short run may not produce competent play.")
+
+def _on_chunk(row):
+    ev = row.get("eval") or {}
+    print(
+        f"chunk decisions={row.get('decisions')}  ε={row.get('epsilon')}  "
+        f"loss={row.get('loss')}  distance={ev.get('max_x_pos')}  "
+        f"reward={ev.get('sum_reward')}"
+    )
+
+MARIO_TRAIN = train_mario_live(
+    MARIO_HOME,
+    training_mode=TRAINING_MODE,
+    train_minutes=minutes,
+    eval_interval=interval,
+    seed=SEED,
+    save_to_drive=SAVE_TO_DRIVE,
+    repo_id=MARIO_MODEL_REPO,
+    revision=MARIO_MODEL_REVISION,
+    on_progress=_on_chunk,
+)
+scorecard(
+    "Mario live train",
+    [
+        ("mode", MARIO_TRAIN.get("mode")),
+        ("training", MARIO_TRAIN.get("training_mode")),
+        ("source", MARIO_TRAIN.get("source") or MARIO_TRAIN.get("reason")),
+        ("device", MARIO_TRAIN.get("device")),
+        ("minutes", MARIO_TRAIN.get("train_minutes")),
+        ("decisions", MARIO_TRAIN.get("decisions")),
+        ("deaths", MARIO_TRAIN.get("deaths")),
+        ("checkpoint", MARIO_TRAIN.get("checkpoint")),
+        ("chunks", len(MARIO_TRAIN.get("history") or [])),
+    ],
+)
+hist = MARIO_TRAIN.get("history") or []
+if hist:
+    plot_series(
+        [r["decisions"] for r in hist],
+        [r["eval"]["max_x_pos"] for r in hist],
+        "decisions",
+        "eval distance",
+        "live training: farthest x_pos after each chunk",
+    )
+    plot_series(
+        [r["decisions"] for r in hist],
+        [r["loss"] for r in hist],
+        "decisions",
+        "smooth L1",
+        "loss is prediction vs target, not gameplay quality",
+    )
+elif MARIO_TRAIN.get("mode") != "live":
+    story = fallback_paths()["storyboard"]
+    if story.is_file():
+        display(SVG(filename=str(story)))
+    rows = MARIO_TRAIN.get("fallback_metrics") or load_fallback_metrics()
+    if rows:
+        plot_series(
+            [r["decisions"] for r in rows],
+            [r["x_pos"] for r in rows],
+            "decisions",
+            "x_pos",
+            "fallback: recorded World 1-1 distance",
+        )
+print(
+    "what just happened: a chunked Mario DQN train, or the recorded-clip fallback. "
+    "The next cell lets a labeled checkpoint play for a user-set step budget."
+)
+'''
+    )
+
+    md(
+        """\
+**Let the trained DQN play.** `EVAL_STEPS` defaults to 10,000 and is yours to change. Pick the locally improved checkpoint or the public final one. A short live run is not a fully trained model.
+"""
+    )
+
+    code(
+        r'''# @title Evaluate the trained DQN
+EVAL_SOURCE = "local-trained"  # @param ["local-trained", "public-final"]
+EVAL_STEPS = 10000             # @param {type:"integer"}
+
+from pathlib import Path
+
+from IPython.display import SVG, Video, display
+from lab import clamp_int, require_names, scorecard
+from mario_lab import EVAL_STEPS_RANGE, evaluate_mario, fallback_paths, load_fallback_metrics
+
+require_names(globals(), "HOME", "SEED")
+MARIO_MODEL_REPO = globals().get("MARIO_MODEL_REPO") or "CraftsMan-Labs/mario-dqn-workshop"
+MARIO_MODEL_REVISION = globals().get("MARIO_MODEL_REVISION") or "main"
+steps = clamp_int(EVAL_STEPS, EVAL_STEPS_RANGE[0], EVAL_STEPS_RANGE[1], "EVAL_STEPS")
+MARIO_EVAL = evaluate_mario(
+    Path(HOME) / "mario-demo",
+    eval_source=EVAL_SOURCE,
+    eval_steps=steps,
+    seed=SEED,
+    repo_id=MARIO_MODEL_REPO,
+    revision=MARIO_MODEL_REVISION,
+    collect_frames=True,
+)
+scorecard(
+    "Mario evaluation",
+    [
+        ("source", f"{MARIO_EVAL.get('eval_source')} · {MARIO_EVAL.get('checkpoint_source')}"),
+        ("mode", MARIO_EVAL.get("mode")),
+        ("steps", MARIO_EVAL.get("eval_steps")),
+        ("total reward", MARIO_EVAL.get("total_reward")),
+        ("farthest distance", MARIO_EVAL.get("farthest_distance")),
+        ("deaths", MARIO_EVAL.get("deaths")),
+        ("completed episodes", MARIO_EVAL.get("completed_episodes")),
+        ("best attempt", MARIO_EVAL.get("best_attempt")),
+        ("video", MARIO_EVAL.get("video")),
+    ],
+)
+if MARIO_EVAL.get("video"):
+    display(Video(MARIO_EVAL["video"], embed=True, width=360))
+elif MARIO_EVAL.get("frames"):
+    for i, frame in enumerate(MARIO_EVAL["frames"][:8]):
+        show_frame(frame, f"{EVAL_SOURCE} frame {i}", f"mario-eval-{i}")
+else:
+    story = fallback_paths()["storyboard"]
+    if story.is_file():
+        display(SVG(filename=str(story)))
+    rows = MARIO_EVAL.get("fallback_metrics") or load_fallback_metrics()
+    if rows:
+        plot_series(
+            [r["decisions"] for r in rows],
+            [r["x_pos"] for r in rows],
+            "decisions",
+            "x_pos",
+            "fallback: recorded World 1-1 distance",
+        )
+print(
+    "what just happened: a labeled policy played for your step budget. "
+    "Next, the same algorithm trains the Atari RAM-vector teacher."
+)
+'''
+    )
+
+    md(
+        """\
 **Same algorithm, different eyes.** Mario sees pixels through a CNN. The workshop teacher sees a RAM vector through an MLP. Replay, target net, and ε-greedy stay the same. Super Mario Bros is how we *see* the loop. The RAM-vector teacher is still the pipeline.
 """
     )
@@ -1387,85 +1613,7 @@ print(
 '''
     )
 
-    md(
-        """\
-### Optional — live Mario DQN
-
-Same algorithm, different eyes. The clips above already show improvement. This cell can load the same CNN, stream Q-values, and run a short Bellman update. The SLM-RL teacher still sees `Game.vector_obs()` through an MLP.
-
-Leave `RUN_MARIO` unchecked to skip. A failure here must not break Chapter 6.
-"""
-    )
-
-    code(
-        r'''# @title Mario DQN (optional)
-RUN_MARIO = False          # @param {type:"boolean"}
-MARIO_PLAY_STEPS = 200     # @param {type:"integer"}
-MARIO_CONTINUE_STEPS = 80  # @param {type:"integer"}
-
-from pathlib import Path
-
-from IPython.display import SVG, display
-from lab import clamp_int, require_names, scorecard
-
-require_names(globals(), "HOME", "SEED", "MODE")
-
-if not RUN_MARIO:
-    print("Mario demo skipped. The Atari teacher above is the workshop path.")
-    MARIO_RESULT = {"mode": "skipped"}
-else:
-    from mario_lab import fallback_paths, load_fallback_metrics, pinned_packages, run_mario_demo
-
-    play = clamp_int(MARIO_PLAY_STEPS, 40, 800, "MARIO_PLAY_STEPS")
-    cont = clamp_int(MARIO_CONTINUE_STEPS, 0, 400, "MARIO_CONTINUE_STEPS")
-    print("optional packages:", ", ".join(pinned_packages()))
-    MARIO_RESULT = run_mario_demo(
-        Path(HOME) / "mario-demo",
-        play_steps=play,
-        continue_steps=cont,
-        seed=SEED,
-    )
-    scorecard(
-        "Mario DQN",
-        [
-            ("mode", MARIO_RESULT.get("mode")),
-            ("reason", MARIO_RESULT.get("reason")),
-            ("encoder", MARIO_RESULT.get("encoder")),
-            ("teacher encoder", MARIO_RESULT.get("teacher_encoder")),
-            ("shared loop", ", ".join(MARIO_RESULT.get("shared") or [])),
-            ("last Q-values", MARIO_RESULT.get("q_values")),
-            ("actions", MARIO_RESULT.get("action_names")),
-            ("mean play reward", round(sum(MARIO_RESULT.get("rewards") or [0.0]) / max(len(MARIO_RESULT.get("rewards") or []), 1), 3)),
-            ("losses", (MARIO_RESULT.get("losses") or [])[:6]),
-        ],
-    )
-    story = fallback_paths()["storyboard"]
-    if MARIO_RESULT.get("mode") != "live" and story.is_file():
-        display(SVG(filename=str(story)))
-        rows = MARIO_RESULT.get("fallback_metrics") or load_fallback_metrics()
-        if rows:
-            plot_series(
-                [r["decisions"] for r in rows],
-                [r["x_pos"] for r in rows],
-                "decisions",
-                "x_pos",
-                "fallback: typical 1-1 distance",
-            )
-    elif MARIO_RESULT.get("losses"):
-        plot_series(
-            list(range(len(MARIO_RESULT["losses"]))),
-            MARIO_RESULT["losses"],
-            "update",
-            "smooth L1",
-            "bounded Bellman update (not a full resume)",
-        )
-    print(
-        "what just happened: Mario is a teaching demo. The production teacher "
-        "stays the RAM-vector MLP you trained above."
-    )
-'''
-    )
-    checkpoint("teacher", "`dqn_path`, `TEACHER_STATS`, optional `MARIO_RESULT`", "bake a shareable pack")
+    checkpoint("teacher", "`dqn_path`, `TEACHER_STATS`, optional `MARIO_TRAIN` / `MARIO_EVAL`", "bake a shareable pack")
 
 
 def chapter_6() -> None:
@@ -2520,11 +2668,11 @@ Talk track (deck on one screen, this notebook on the other):
 | Colab | Presentation slides |
 |---|---|
 | 0 Setup | cover → join-lobby → why-slm-matters → today |
-| 1 Games | what-is-slm → why-games |
+| 1 Games | what-is-slm → why-games · play before you train |
 | 2 Config | notebook-led; deck stays on the story |
 | 3 Model plays | journey → journey-tech |
 | 4 Dataset | rl-loop → sft-vs-rl → why-sft-first |
-| 5 Teachers | section-dqn → what-is-dqn → q-values → Bellman → replay → target → ε → clips → bridge → teacher-dataset |
+| 5 Teachers | section-dqn → what-is-dqn → q-values → Bellman → replay → target → ε → clips → live train → eval → bridge → teacher-dataset |
 | 6 Packs | synthetic-homework → inspect a trace → trace-to-pair → dataset-filters → why-warmstart |
 | 7 Training | gen-0-1 → GRPO slides |
 | 8 Gate | promote-reject → eval-gate |

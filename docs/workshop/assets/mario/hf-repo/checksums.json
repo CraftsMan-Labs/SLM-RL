@@ -1,0 +1,13 @@
+{
+  "repo": "CraftsMan-Labs/mario-dqn-workshop",
+  "files": {
+    "warm-start.chkpt": {
+      "sha256": "4cbe70ceb7783337cc1bb72f63aeddd06c3e7f31e9baedb62ed937b6321dd03b",
+      "fallback_stage": "mid"
+    },
+    "final.chkpt": {
+      "sha256": "75521a9b48c792693bf855ec5c62dfaf8bda1a2bf556439c674bfb36fde1c4e5",
+      "fallback_stage": "pretrained"
+    }
+  }
+}

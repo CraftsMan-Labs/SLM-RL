@@ -159,7 +159,10 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "cdn.jsdelivr.net/npm/mermaid" not in joined
     assert "Presentation: cover → join-lobby" in joined
     assert "**Goal.**" in joined
-    assert "RUN_MARIO" in joined
+    assert "PLAY_GAME" in joined
+    assert "TRAINING_MODE" in joined
+    assert "EVAL_STEPS" in joined
+    assert "MARIO_MODEL_REPO" in joined
     assert "target = reward + γ × best next Q" in joined
     assert "mario-pretrained.mp4" in joined
     assert "select_episodes" in joined
@@ -297,6 +300,8 @@ def test_talk_track_headings_match_builder():
         "dqn-target",
         "dqn-epsilon",
         "dqn-curve",
+        "dqn-live-train",
+        "dqn-live-eval",
         "dqn-bridge",
         "teacher-dataset",
     )
@@ -320,6 +325,22 @@ def test_talk_track_headings_match_builder():
         "dataset-filters",
         "why-warmstart",
     )
+
+
+def test_talk_track_matches_presentation_and_new_dqn_slides():
+    from talk_track import CHAPTERS
+
+    deck = ROOT.parent / "SLM-RL-Presentation"
+    slides = (deck / "src" / "data" / "slides.js").read_text(encoding="utf-8")
+    track = (deck / "src" / "data" / "talkTrack.js").read_text(encoding="utf-8")
+    ch5 = next(row for row in CHAPTERS if row["number"] == 5)
+    for slide_id in ch5["slide_ids"]:
+        assert f"id: '{slide_id}'" in slides
+        assert f"'{slide_id}'" in track
+    assert "Watch learning happen" in slides
+    assert "Let the trained DQN play" in slides
+    assert "play before you train" in slides.lower()
+    assert "10,000" in slides
 
 
 def _chapter_slice(joined: str, number: int, nxt: int) -> str:
@@ -356,8 +377,15 @@ def test_chapter_5_6_interactions_and_sequence(tmp_path):
     assert "EPSILON" in ch5 and "random.Random(SEED)" in ch5
     assert ch5.index("Which clip travels farthest") < ch5.index("mario-untrained.mp4")
     assert ch5.index("ask(") < ch5.index("mario-untrained.mp4")
-    assert ch5.index("mario-pretrained.mp4") < ch5.index("# @title Teacher knobs")
-    assert ch5.index("# @title Teacher knobs") < ch5.index("RUN_MARIO")
+    assert "# @title Play before you train" in joined
+    assert joined.index("# @title Play before you train") < joined.index("## 2. Config")
+    assert "INSTALL_MARIO" in joined
+    assert ch5.index("mario-pretrained.mp4") < ch5.index("# @title Train Mario live")
+    assert ch5.index("# @title Train Mario live") < ch5.index("# @title Evaluate the trained DQN")
+    assert ch5.index("# @title Evaluate the trained DQN") < ch5.index("# @title Teacher knobs")
+    assert "EVAL_STEPS = 10000" in ch5
+    assert "TRAINING_MODE" in ch5
+    assert "local-trained" in ch5
 
     assert "# @title Inspect a trace before SFT" in ch6
     assert ch6.index("select_episodes") < ch6.index("bake_pack")
@@ -377,4 +405,4 @@ def test_fresh_runtime_form_cells_do_not_shadow_game_after_knobs():
             seen_knobs = True
             continue
         if seen_knobs and cell["cell_type"] == "code":
-            assert "GAME = \"boxing\"" not in src
+            assert not any(line.startswith('GAME = "boxing"') for line in src.splitlines())
