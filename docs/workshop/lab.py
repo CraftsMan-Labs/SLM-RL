@@ -230,6 +230,41 @@ def ask(
         print("  type something to continue — Runtime → Run all is paused on purpose.")
 
 
+def ask_hf_token(
+    *,
+    default: str = "",
+    skip: bool | None = None,
+    reader: Callable[[str], str] | None = None,
+) -> str:
+    """Prompt for a Hugging Face token. Empty is allowed. Never print the value.
+
+    A filled ``default`` (Colab form or prior env) is returned without prompting
+    so re-runs and instructor Secrets do not block. Otherwise ``getpass``
+    pauses Runtime → Run all until the attendee pastes a token or hits Enter.
+    """
+    seeded = (default or "").strip()
+    if skip_gates_enabled(skip):
+        return seeded
+    if seeded:
+        return seeded
+    if reader is None:
+        try:
+            from getpass import getpass
+
+            read: Callable[[str], str] = getpass
+        except Exception:
+            read = input
+    else:
+        read = reader
+    return (
+        read(
+            "Hugging Face token (hf_… write scope — "
+            "https://huggingface.co/settings/tokens; Enter to skip): "
+        )
+        or ""
+    ).strip()
+
+
 def new_card(name: str) -> dict[str, Any]:
     cleaned = (name or "").strip() or "anonymous"
     return {"name": cleaned[:40], "guesses": []}

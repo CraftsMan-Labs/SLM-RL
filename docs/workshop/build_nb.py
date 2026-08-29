@@ -13,6 +13,7 @@ registered in CHAPTERS. Add or edit a chapter function, then re-run.
 
 from __future__ import annotations
 
+import html
 import json
 import sys
 from pathlib import Path
@@ -55,30 +56,52 @@ def code(source: str) -> None:
     )
 
 
+# Native deck stills are ~1920px; unconstrained markdown `![]()` overflows a
+# 13-inch Colab pane (~720px content). Cap width and height, keep aspect ratio.
+_MEDIA_STYLE = (
+    "max-width:min(100%,720px);max-height:min(42vh,380px);"
+    "width:auto;height:auto;object-fit:contain;display:block;"
+)
+_THUMB_STYLE = (
+    "max-width:min(100%,280px);max-height:160px;"
+    "width:auto;height:auto;object-fit:contain;display:block;"
+)
+
+
+def _img_tag(src: str, caption: str, style: str = _MEDIA_STYLE) -> str:
+    alt = html.escape(caption, quote=True)
+    return f'<img src="{src}" alt="{alt}" style="{style}">'
+
+
+def _capped_img(src: str, caption: str) -> None:
+    md(f"{_img_tag(src, caption)}\n\n*{caption}*")
+
+
+def _capped_video(src: str, caption: str) -> None:
+    md(
+        f'<video src="{src}" controls muted playsinline '
+        f'style="{_MEDIA_STYLE}"></video>\n\n*{caption}*'
+    )
+
+
 def diagram_cell(name: str, caption: str) -> None:
     """Static SVG. Colab shows the image, not diagram source."""
-    md(f"![{caption}]({DIAGRAM_RAW}/{name}.svg)\n\n*{caption}*")
+    _capped_img(f"{DIAGRAM_RAW}/{name}.svg", caption)
 
 
 def deck_image(name: str, caption: str) -> None:
     """Still from the Vue deck (`docs/workshop/assets/deck`)."""
-    md(f"![{caption}]({DECK_RAW}/{name})\n\n*{caption}*")
+    _capped_img(f"{DECK_RAW}/{name}", caption)
 
 
 def deck_video(name: str, caption: str) -> None:
     """Short clip from the Vue deck. Colab markdown plays HTML5 video."""
-    md(
-        f'<video src="{DECK_RAW}/{name}" controls muted playsinline '
-        f'style="max-width:100%;height:auto"></video>\n\n*{caption}*'
-    )
+    _capped_video(f"{DECK_RAW}/{name}", caption)
 
 
 def mario_video(name: str, caption: str) -> None:
     """World 1-1 clip recorded from checksummed public CNN checkpoints."""
-    md(
-        f'<video src="{MARIO_RAW}/{name}" controls muted playsinline '
-        f'style="max-width:100%;height:auto"></video>\n\n*{caption}*'
-    )
+    _capped_video(f"{MARIO_RAW}/{name}", caption)
 
 
 def chapter_open(number: int, body: str) -> None:
@@ -457,14 +480,18 @@ print(
 ### Join the room
 
 `Runtime → Run all` stops on the next cell until you type a name. That name is what the scorecard uses at the end.
+
+Paste a Hugging Face token in the yellow form, or wait for the hidden prompt. Create a **write** token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens). The token is applied to the process env and **never printed**. Blank is allowed — Hub downloads stay anonymous, and Chapter 11 publish becomes a no-op.
 """
     )
 
     code(
         r'''# @title Join the room
 DISPLAY_NAME = "anonymous"  # @param {type:"string"}
+HF_TOKEN = ""  # @param {type:"string"}
 
-from lab import ask, new_card, show_card
+from lab import ask, ask_hf_token, new_card, show_card
+from slm_rl.hf_auth import apply_hf_token, hf_token
 
 name = ask(
     "Your name (shown on the scorecard)",
@@ -472,6 +499,24 @@ name = ask(
 )
 DISPLAY_NAME = name
 CARD = new_card(name)
+
+seeded = (HF_TOKEN or "").strip() or (hf_token() or "")
+if not seeded:
+    try:
+        from google.colab import userdata  # type: ignore
+
+        seeded = (userdata.get("HF_TOKEN") or "").strip()
+    except Exception:
+        seeded = ""
+HF_TOKEN = apply_hf_token(ask_hf_token(default=seeded)) or ""
+if HF_TOKEN:
+    print("HF token applied (not printed). Hub downloads and optional publish will use it.")
+else:
+    print(
+        "No HF token — Hub stays anonymous. Paste one in this form and re-run "
+        "if a gated model download fails, or before Chapter 11 publish."
+    )
+
 show_card(CARD)
 print(
     f"welcome, {CARD['name']}. later cells will pause and ask you to type. "
@@ -1746,7 +1791,7 @@ from slm_rl.packs import (
     resolve_pack,
     write_manifest,
 )
-from lab import require_names, scorecard
+from lab import ask_hf_token, require_names, scorecard
 
 require_names(globals(), "GAME", "HOME", "MODE")
 
@@ -1754,13 +1799,7 @@ print("ATARI_GAMES:", sorted(ATARI_GAMES))
 print(f"is_atari({GAME!r}):", is_atari(GAME))
 print("packs_root:", packs_root(HOME))
 
-# Pull a Colab Secret into the process env if the attendee set one.
-try:
-    from google.colab import userdata  # type: ignore
-
-    apply_hf_token(userdata.get("HF_TOKEN"))
-except Exception:
-    apply_hf_token(hf_token())
+apply_hf_token(hf_token())
 
 BAKE_EPISODES = {"QUICK": 2, "FULL": 20}[MODE]
 pack_dir = bake_pack(
@@ -1787,9 +1826,12 @@ else:
     print("PACK_URL is empty — local bake only. Paste a dataset URL to pull a published pack.")
 
 if PUSH_TO_HUB and PUSH_REPO.strip():
-    token = hf_token()
+    token = apply_hf_token(ask_hf_token(default=hf_token() or ""))
     if not token:
-        print("Add HF_TOKEN in Colab Secrets (or export HF_TOKEN) and re-run to push.")
+        print(
+            "No HF token. Paste one in Join the room (or this prompt) and re-run to push. "
+            "Nothing was uploaded."
+        )
     else:
         commit_url = push_pack(pack_dir, PUSH_REPO.strip(), token=token)
         print("push_pack →", commit_url)
@@ -1831,9 +1873,9 @@ def chapter_7() -> None:
 
 | Hit / destroy **+** | Better score **+** |
 |---|---|
-| ![Enemy destroyed]({DECK_RAW}/enemy_destroyed.png) | ![Better score]({DECK_RAW}/better_score.png) |
+| {_img_tag(f"{DECK_RAW}/enemy_destroyed.png", "Enemy destroyed", _THUMB_STYLE)} | {_img_tag(f"{DECK_RAW}/better_score.png", "Better score", _THUMB_STYLE)} |
 | Life lost / invalid **−** | Doom loop / parse fail **−** |
-| ![Life lost]({DECK_RAW}/life_lost.png) | ![Doom loop]({DECK_RAW}/doom_loop.png) |
+| {_img_tag(f"{DECK_RAW}/life_lost.png", "Life lost", _THUMB_STYLE)} | {_img_tag(f"{DECK_RAW}/doom_loop.png", "Doom loop", _THUMB_STYLE)} |
 """
     )
     md("**Before & after** — same seeds, raw vs trained. What changed?")
@@ -2429,44 +2471,41 @@ print(
 def chapter_11() -> None:
     chapter_open(
         11,
-        "Colab Secrets → `HF_TOKEN` (write scope). Missing token = friendly no-op, never a crash.",
+        "Paste a write-scoped Hugging Face token in the form (or at Join the room). "
+        "Missing token = friendly no-op, never a crash.",
     )
     diagram_cell("publish", "publish_experiment writes a model repo and a dataset repo")
 
     challenge(
         "publish? (opt-in)",
-        "Leave `PUBLISH` unchecked unless you have a write-scoped `HF_TOKEN`. "
+        "Leave `PUBLISH` unchecked unless you have a write-scoped Hugging Face token. "
         "A missing token is a friendly no-op, never a crash.",
     )
 
     code(
         r'''# @title Publish to Hugging Face
 PUBLISH = False     # @param {type:"boolean"}
+HF_TOKEN = ""      # @param {type:"string"}
 
 from pathlib import Path
 
 from slm_rl.datagen.hf_publish import publish_experiment
 from slm_rl.hf_auth import apply_hf_token, hf_token
 from slm_rl.orchestrator.paths import RunPaths
-from lab import scorecard
+from lab import ask_hf_token, scorecard
 
 token = None
 PUBLISH_RESULT = None
 if PUBLISH:
-    try:
-        from google.colab import userdata  # type: ignore
-
-        token = userdata.get("HF_TOKEN")
-    except Exception:
-        token = None
-    token = apply_hf_token(token)
+    seeded = (HF_TOKEN or "").strip() or (hf_token() or "")
+    token = apply_hf_token(ask_hf_token(default=seeded))
 
 if not PUBLISH:
     print("PUBLISH is off — nothing uploaded. Tick the box and re-run to opt in.")
 elif not token:
     print(
-        "No HF_TOKEN found. Add one in Colab Secrets (key icon, left sidebar) "
-        "with write scope, or export HF_TOKEN, then re-run this cell. "
+        "No HF token. Paste a write-scoped token in the form above "
+        "(https://huggingface.co/settings/tokens) and re-run this cell. "
         "Nothing was uploaded."
     )
 else:

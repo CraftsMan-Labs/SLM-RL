@@ -97,6 +97,21 @@ def test_ask_skip_and_reader(monkeypatch):
     assert skip_gates_enabled(False) is False
 
 
+def test_ask_hf_token_allows_blank_and_skips_when_seeded(monkeypatch):
+    from lab import ask_hf_token
+
+    assert ask_hf_token(default="hf_seededtoken", skip=True) == "hf_seededtoken"
+    assert ask_hf_token(default="", skip=True) == ""
+    assert ask_hf_token(default="hf_from_form", reader=lambda _prompt: "should-not-run") == (
+        "hf_from_form"
+    )
+    assert ask_hf_token(default="", reader=lambda _prompt: "  hf_pasted  ") == "hf_pasted"
+    assert ask_hf_token(default="", reader=lambda _prompt: "   ") == ""
+    monkeypatch.setenv("WORKSHOP_SKIP_GATES", "1")
+    assert ask_hf_token(default="hf_envskip") == "hf_envskip"
+    monkeypatch.delenv("WORKSHOP_SKIP_GATES", raising=False)
+
+
 def test_card_records_and_prints(capsys):
     card = new_card(" Ada ")
     assert card["name"] == "Ada"
@@ -168,6 +183,10 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "select_episodes" in joined
     assert "docs/workshop/assets/diagrams/evolve-loop.svg" in joined
     assert "docs/workshop/assets/deck/HeroVisual.png" in joined
+    assert "max-width:min(100%,720px)" in joined
+    assert "max-height:min(42vh,380px)" in joined
+    assert "max-width:min(100%,280px)" in joined
+    assert "![" not in joined
     assert "docs/workshop/assets/deck/meet-the-teacher.mp4" in joined
     assert "docs/workshop/assets/diagrams/dqn-q-values.svg" in joined
     assert "docs/workshop/assets/diagrams/dqn-loop.svg" in joined
@@ -180,6 +199,8 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "skip=SKIP_GATES" not in joined
     assert "# @title Join the room" in joined
     assert "ask(" in joined
+    assert "ask_hf_token" in joined
+    assert 'HF_TOKEN = ""' in joined
     assert "show_card(CARD)" in joined
     assert "Runtime → Run all" in joined
 
