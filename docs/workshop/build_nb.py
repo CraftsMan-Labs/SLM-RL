@@ -57,13 +57,13 @@ def code(source: str) -> None:
 
 
 # Native deck stills are ~1920px; unconstrained markdown `![]()` overflows a
-# 13-inch Colab pane (~720px content). Cap width and height, keep aspect ratio.
+# 13-inch Colab pane. Keep stills compact so cells stay on one laptop screen.
 _MEDIA_STYLE = (
-    "max-width:min(100%,720px);max-height:min(42vh,380px);"
+    "max-width:min(100%,480px);max-height:min(28vh,240px);"
     "width:auto;height:auto;object-fit:contain;display:block;"
 )
 _THUMB_STYLE = (
-    "max-width:min(100%,280px);max-height:160px;"
+    "max-width:min(100%,180px);max-height:100px;"
     "width:auto;height:auto;object-fit:contain;display:block;"
 )
 

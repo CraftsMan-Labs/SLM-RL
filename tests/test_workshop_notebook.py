@@ -183,9 +183,9 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "select_episodes" in joined
     assert "docs/workshop/assets/diagrams/evolve-loop.svg" in joined
     assert "docs/workshop/assets/deck/HeroVisual.png" in joined
-    assert "max-width:min(100%,720px)" in joined
-    assert "max-height:min(42vh,380px)" in joined
-    assert "max-width:min(100%,280px)" in joined
+    assert "max-width:min(100%,480px)" in joined
+    assert "max-height:min(28vh,240px)" in joined
+    assert "max-width:min(100%,180px)" in joined
     assert "![" not in joined
     assert "docs/workshop/assets/deck/meet-the-teacher.mp4" in joined
     assert "docs/workshop/assets/diagrams/dqn-q-values.svg" in joined
