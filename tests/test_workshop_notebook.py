@@ -564,9 +564,9 @@ def test_talk_track_matches_presentation_and_new_dqn_slides():
         assert f"id: '{slide_id}'" in slides
         assert f"'{slide_id}'" in track
     assert "Watch learning happen" in slides
-    assert "Let the trained DQN play" in slides
+    assert "Watch the\\nDQN play" in slides
     assert "play before you train" in slides.lower()
-    assert "10,000" in slides
+    assert "mario-dqn-pretrained.mp4" in slides
 
 
 def _chapter_slice(joined: str, number: int, nxt: int) -> str:

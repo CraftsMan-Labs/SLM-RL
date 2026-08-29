@@ -436,14 +436,16 @@ KNOBS = {
     "QUICK": {
         "generations": 2,
         "train": {
-            "episodes_per_generation": 4,
+            # Cap of QUICK bounds: more SFT homework without flipping to FULL.
+            "episodes_per_generation": 8,
             "grpo_max_steps": 12,
             "grpo_max_prompts": 16,
             "group_size": 2,
             "max_completion_tokens": 24,
             "rollout_batch_size": 4,
         },
-        "teacher": {"warmstart_episodes": 20},
+        # Stronger gen-1 distill; keep reject_sft wall-clock in workshop range.
+        "teacher": {"warmstart_episodes": 40},
     },
     "FULL": {
         "generations": 3,
@@ -457,7 +459,7 @@ KNOBS = {
     },
 }[MODE]
 DQN_DECISIONS = {"QUICK": 5_000, "FULL": 300_000}[MODE]
-EVAL_LIMIT = {"QUICK": 4, "FULL": 50}[MODE]
+EVAL_LIMIT = {"QUICK": 8, "FULL": 50}[MODE]
 BACKEND = resolve_backend(PRECISION)
 
 HOME = "/content/slm-rl-runs"
