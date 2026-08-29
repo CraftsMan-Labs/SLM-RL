@@ -76,6 +76,83 @@ predict-then-reveal quizzes. A few cells call `input()` on purpose so
 There is no participant-facing skip control, and blank answers do not continue.
 Challenge cells are extra; skip those and the rest still runs.
 
+#### Live progress (WorkShopTracker)
+
+Participant progress is reported to
+[workshop.craftsmanlabs.net](https://workshop.craftsmanlabs.net/signin) as
+telemetry — not a grade.
+
+1. Facilitator shares a **run join URL** (`https://workshop.craftsmanlabs.net/join/<slug>`).
+2. Attendee pastes that URL into the notebook’s `WORKSHOP_JOIN_URL` form field,
+   opens it, signs in, joins the run, then clicks **Generate key** on `/workshop`.
+3. Attendee stores the secret (shown once, `wsp_live_…`) as Colab Secret
+   **`WST_API_KEY`** (or exports `WST_API_KEY` in the runtime env).
+4. The Join-the-room cell connects via a small stdlib client in `lab.py`
+   (no private-repo pip install), validates the key with `tracker.me()`, and
+   later cells call `start_chapter` / `complete_chapter` for `chapter-0` …
+   `chapter-13`.
+
+**Never** put an admin/master key (`MASTER_KEY_NOTEBOOK` / `WST_ADMIN_KEY`) in
+Colab. That secret is facilitator-only.
+
+##### Facilitator: sync checkpoints + mint a run
+
+Project id used for this workshop:
+`97819f51-9100-43a0-a0de-330879218f16`.
+
+Runs **snapshot** their checkpoint list when created. After syncing the 14
+chapter keys below, create a **fresh** workshop run and put its join URL in the
+notebook form / share it with the room.
+
+```python
+import os
+import requests
+
+BASE = "https://workshop.craftsmanlabs.net"
+KEY = os.environ["WST_ADMIN_KEY"]  # facilitator master key — not for Colab
+H = {"Authorization": f"Bearer {KEY}", "Accept": "application/json"}
+PROJECT = "97819f51-9100-43a0-a0de-330879218f16"
+
+chapters = [
+    ("chapter-0", "Setup"),
+    ("chapter-1", "The games"),
+    ("chapter-2", "Config"),
+    ("chapter-3", "The model plays"),
+    ("chapter-4", "Rollout + dataset"),
+    ("chapter-5", "Teachers / hybrid RL"),
+    ("chapter-6", "Packs"),
+    ("chapter-7", "Training"),
+    ("chapter-8", "Eval and the gate"),
+    ("chapter-9", "The evolve loop"),
+    ("chapter-10", "Theater"),
+    ("chapter-11", "Publish"),
+    ("chapter-12", "Build your own game"),
+    ("chapter-13", "Tests"),
+]
+for i, (key, title) in enumerate(chapters, start=1):
+    requests.post(
+        f"{BASE}/api/v1/projects/{PROJECT}/checkpoints",
+        json={"key": key, "title": title, "sort_order": i},
+        headers=H,
+    ).raise_for_status()
+
+run = requests.post(
+    f"{BASE}/api/v1/workshop-runs",
+    json={"project_id": PROJECT, "name": "SLM-RL cohort"},
+    headers=H,
+).json()
+print("join URL:", run["join_url"])
+# Open held chapters from the live dashboard, or:
+# requests.patch(
+#     f"{BASE}/api/v1/workshop-runs/{run['id']}/checkpoints/chapter-2",
+#     json={"unlocked": True},
+#     headers=H,
+# ).raise_for_status()
+```
+
+If a checkpoint key already exists on the project, skip or update it in the
+admin UI — duplicate keys return 409.
+
 Run it side-by-side with the Vue deck. Each chapter heading names the matching
 slides (`Presentation: …`). Pipeline diagrams are static SVGs, not Mermaid
 source. Deck stills and short clips live in `docs/workshop/assets/deck` so Colab

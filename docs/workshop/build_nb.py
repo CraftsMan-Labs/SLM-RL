@@ -33,6 +33,7 @@ DECK_RAW = f"{ASSET_RAW}/deck"
 MARIO_RAW = f"{ASSET_RAW}/mario"
 
 cells: list[dict] = []
+_CURRENT_CHAPTER: int | None = None
 
 
 def _lines(text: str) -> list[str]:
@@ -112,6 +113,8 @@ def mario_video(name: str, caption: str) -> None:
 
 
 def chapter_open(number: int, body: str) -> None:
+    global _CURRENT_CHAPTER
+    _CURRENT_CHAPTER = number
     row = chapter_by_number(number)
     md(
         f"{row['heading']}\n\n"
@@ -119,6 +122,13 @@ def chapter_open(number: int, body: str) -> None:
         f"**{colab_cue(number)}**\n\n"
         f"{body.rstrip()}\n"
     )
+    # Chapter 0 starts after the participant key is bound in "Join the room".
+    if number > 0:
+        code(
+            f"# Track progress — chapter {number} started\n"
+            "from lab import start_chapter\n"
+            f"start_chapter({number})\n"
+        )
 
 
 def challenge(title: str, body: str) -> None:
@@ -131,13 +141,20 @@ def optional_challenge(title: str, body: str) -> None:
     md(f"<details>\n<summary>Optional challenge — {title}</summary>\n\n{body}\n\n</details>")
 
 
-def checkpoint(phase: str, artifacts: str, nxt: str) -> None:
+def checkpoint(phase: str, artifacts: str, nxt: str, *, chapter: int | None = None) -> None:
     md(
         f"### Checkpoint — {phase}\n\n"
         f"| | |\n|---|---|\n"
         f"| Produced | {artifacts} |\n"
         f"| Next | {nxt} |\n"
     )
+    n = _CURRENT_CHAPTER if chapter is None else chapter
+    if n is not None:
+        code(
+            f"# Track progress — chapter {n} complete\n"
+            "from lab import complete_chapter\n"
+            f"complete_chapter({n})\n"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -488,7 +505,11 @@ print(
         """\
 ### Join the room
 
-`Runtime → Run all` stops on the next cell until you type a name. That name is what the scorecard uses at the end.
+Progress is tracked live on [WorkShopTracker](https://workshop.craftsmanlabs.net/signin). Paste the facilitator join URL below, open it, sign in, join the run, then **Generate key** on `/workshop`. Store the secret (shown once) as Colab Secret **`WST_API_KEY`**.
+
+That key is **run-scoped and yours** — never paste an admin/master key into this notebook.
+
+`Runtime → Run all` still stops until you type a display name. That name is what the local scorecard uses at the end.
 
 Paste a Hugging Face token in the yellow form, or wait for the hidden prompt. Create a **write** token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens). The token is applied to the process env and **never printed**. Blank is allowed — Hub downloads stay anonymous, and Chapter 11 publish becomes a no-op.
 """
@@ -497,9 +518,17 @@ Paste a Hugging Face token in the yellow form, or wait for the hidden prompt. Cr
     code(
         r'''# @title Join the room
 DISPLAY_NAME = "anonymous"  # @param {type:"string"}
+WORKSHOP_JOIN_URL = "https://workshop.craftsmanlabs.net/join/YOUR-RUN-SLUG"  # @param {type:"string"}
 HF_TOKEN = ""  # @param {type:"string"}
 
-from lab import ask, ask_hf_token, new_card, show_card
+from lab import (
+    ask,
+    ask_hf_token,
+    connect_workshop_tracker,
+    new_card,
+    show_card,
+    start_chapter,
+)
 from slm_rl.hf_auth import apply_hf_token, hf_token
 
 name = ask(
@@ -508,6 +537,15 @@ name = ask(
 )
 DISPLAY_NAME = name
 CARD = new_card(name)
+
+join_url = (WORKSHOP_JOIN_URL or "").strip()
+print(f"Join / generate key: {join_url}")
+print("After joining, open /workshop → Generate key → Colab Secret WST_API_KEY")
+
+# Progress client lives in lab.py (stdlib urllib) — no private-repo pip install.
+TRACKER = connect_workshop_tracker(join_url=join_url)
+if TRACKER is not None:
+    start_chapter(0)
 
 seeded = (HF_TOKEN or "").strip() or (hf_token() or "")
 if not seeded:
@@ -672,6 +710,10 @@ def close_backend_if_any(name="backend"):
 
 
 print("what just happened: viewers, unwrap_game, ensure_game, close_backend_if_any are defined.")
+
+from lab import complete_chapter
+
+complete_chapter(0)
 '''
     )
 
@@ -1018,13 +1060,14 @@ Next cell: `consolidate()` → parquet → pick a row.
     challenge(
         "what is the training target?",
         "Which field is the completion the trainer copies? "
-        "`parsed_action` is the env id; `raw_completion` is the model's text.",
+        "`parsed_action` is the environment action id; `completion` is the "
+        "model text persisted in the rollout dataset.",
     )
 
     code(
         r'''# @title Inspect a rollout row
 ROW_INDEX = 0                         # @param {type:"integer"}
-SCHEMA_FIELD = "raw_completion"       # @param ["prompt_messages", "raw_completion", "parsed_action", "reward", "monitor_flags"]
+SCHEMA_FIELD = "completion"           # @param ["prompt_messages", "completion", "parsed_action", "reward", "monitor_flags"]
 
 from slm_rl.datagen.consolidate import consolidate
 import pandas as pd
@@ -1045,8 +1088,8 @@ scorecard(
         ("columns", list(df.columns)),
         ("parsed_action", row.get("parsed_action")),
         ("reward", row.get("reward")),
-        ("raw_completion", str(row.get("raw_completion"))[:180]),
-        ("schema quiz", grade(SCHEMA_FIELD, "raw_completion")),
+        ("completion", str(row.get("completion"))[:180]),
+        ("schema quiz", grade(SCHEMA_FIELD, "completion")),
     ],
 )
 print(df.head())
@@ -1067,8 +1110,8 @@ def chapter_5() -> None:
         "Three seams (`docs/HYBRID_RL.md`): warm-start demos, Q-top-k menu prune, potential shaping. "
         "**Hard rule: teachers never touch eval.**\n\n"
         "Same pattern as the deck: idea → Mario → the name. "
-        "Three short checkpoints (Q-values, Bellman, ε), then a pause before the clips. "
-        "After the clips: train Mario live, then let a trained policy play for a user-set step budget. "
+        "Three short checkpoints explain Q-values, Bellman targets, and ε. "
+        "Then train Mario live and let a trained policy play for a user-set step budget. "
         "The Atari teacher cell stays the critical path; live Mario falls back to recorded clips.",
     )
     diagram_cell("dqn-hybrid", "DQN teacher writes homework; the SLM is examined without the teacher")
@@ -1107,12 +1150,16 @@ Biggest number is the current best guess — not a proven optimal policy.
     )
     diagram_cell("dqn-q-values", "One state, a number per action. The biggest number is the move.")
     challenge(
-        "which button?",
-        "Type `RIGHT` or `RIGHT+A` **before** the cell reveals the choice. "
-        "`Runtime → Run all` waits. The scorecard records your guess.",
+        "which move should Mario choose?",
+        "Treat each Q-value like the DQN’s predicted future score for that move. "
+        "Higher is better: compare `RIGHT = 0.41` with `RIGHT+A = 1.27`, "
+        "then choose the move you expect the DQN to take.",
     )
     code(
-        r'''# @title Predict RIGHT vs RIGHT+A
+        r'''# @title Which move should Mario choose?
+# @markdown A **Q-value** is the DQN's estimate of how useful a move will be. The move with the **higher number wins**.
+# @markdown **RIGHT** = run forward without jumping. **RIGHT+A** = run forward while holding Mario's **A (jump)** button.
+# @markdown `RIGHT` = **0.41** &nbsp;&nbsp; | &nbsp;&nbsp; `RIGHT+A` = **1.27**
 PREDICT_ACTION = "RIGHT"   # @param ["RIGHT", "RIGHT+A"]
 
 from lab import ask, ensure_card, grade, record_guess, scorecard
@@ -1121,12 +1168,14 @@ CARD = ensure_card(globals())
 SAMPLE_Q = {"RIGHT": 0.41, "RIGHT+A": 1.27}
 CHOSEN = max(SAMPLE_Q, key=SAMPLE_Q.get)
 PREDICT_ACTION = ask(
-    "Which action does the net pick from those Q-values?",
+    "Which move wins because it has the higher Q-value?",
     allowed=("RIGHT", "RIGHT+A"),
     default=PREDICT_ACTION,
 )
-print(f"Q-values: {SAMPLE_Q}")
-print(f"chosen action / current best guess: {CHOSEN}")
+print("Mario's choices:")
+print("  RIGHT    0.41  ███")
+print("  RIGHT+A  1.27  ██████████  ← higher")
+print(f"\nDQN chooses {CHOSEN}: 1.27 is greater than 0.41.")
 print(grade(PREDICT_ACTION, CHOSEN))
 record_guess(CARD, "RIGHT vs RIGHT+A", PREDICT_ACTION, CHOSEN)
 scorecard(
@@ -1156,11 +1205,18 @@ scorecard(
     diagram_cell("dqn-math", "target = reward + γ × best next Q. Predicted value chases that target.")
     challenge(
         "compute the target",
-        "Edit reward, γ, and the next-action Q-values. The cell writes "
-        "`target = reward + γ × best next Q` and compares it with the current prediction.",
+        "The DQN predicted a value for Mario's last move. After seeing what "
+        "actually happened, it creates a better answer: reward now plus the "
+        "discounted value of the best move available next. This better answer "
+        "is the Bellman target.",
     )
     code(
         r'''# @title One Bellman target
+# @markdown The **Bellman target** is the improved answer used to teach the DQN what its previous move was worth.
+# @markdown **Target = reward received now + γ × value of the best next move**
+# @markdown `REWARD` = points received after the move. `GAMMA` = how much future value matters (`0.99` keeps 99%).
+# @markdown `NEXT_Q_*` = predicted values of moves on the next screen. `PREDICTED_Q` = the DQN's old estimate for the previous move.
+# @markdown If `TERMINAL` is checked, the episode ended, so there is no next move and no future value.
 REWARD = 1.0                 # @param {type:"number"}
 GAMMA = 0.99                 # @param {type:"number"}
 NEXT_Q_RIGHT = 0.50          # @param {type:"number"}
@@ -1179,6 +1235,24 @@ best_next = max(q_right, q_right_a)
 best_name = "RIGHT+A" if q_right_a >= q_right else "RIGHT"
 future = 0.0 if TERMINAL else gamma * best_next
 target = reward + future
+gap = target - predicted
+direction = "increase" if gap > 0 else ("decrease" if gap < 0 else "keep")
+
+print("Step 1 — reward received now:")
+print(f"  {reward:.3f}")
+if TERMINAL:
+    print("Step 2 — episode ended, so future value is 0.")
+else:
+    print("Step 2 — choose the best estimated move on the next screen:")
+    print(f"  {best_name} has the highest next Q-value: {best_next:.3f}")
+    print("Step 3 — discount that future value:")
+    print(f"  {gamma:.2f} × {best_next:.3f} = {future:.3f}")
+print("Step 4 — build the teaching target:")
+print(f"  {reward:.3f} + {future:.3f} = {target:.3f}")
+print("Step 5 — compare with the DQN's old prediction:")
+print(f"  old prediction {predicted:.3f}; target {target:.3f}")
+print(f"  learning should {direction} the prediction by {abs(gap):.3f}.")
+
 scorecard(
     "Bellman",
     [
@@ -1186,7 +1260,8 @@ scorecard(
         ("terminal?", TERMINAL),
         ("best next action", f"{best_name}  Q={best_next}"),
         ("current prediction", predicted),
-        ("prediction − target", round(predicted - target, 3)),
+        ("target − prediction", round(gap, 3)),
+        ("learning direction", direction),
     ],
 )
 print(
@@ -1272,49 +1347,9 @@ print(
 '''
     )
 
-    challenge(
-        "which clip goes farthest?",
-        "Type `untrained`, `mid`, or `pretrained` **before** the videos appear. "
-        "`Runtime → Run all` waits here on purpose.",
-    )
-    code(
-        r'''# @title Predict the Mario clips
-PREDICT_CLIP = "pretrained"  # @param ["untrained", "mid", "pretrained"]
-
-from lab import ask, ensure_card, grade, record_guess, scorecard
-
-CARD = ensure_card(globals())
-PREDICT_CLIP = ask(
-    "Which clip travels farthest on World 1-1?",
-    allowed=("untrained", "mid", "pretrained"),
-    default=PREDICT_CLIP,
-)
-ACTUAL_CLIP = "pretrained"
-print(grade(PREDICT_CLIP, ACTUAL_CLIP))
-record_guess(CARD, "mario clips", PREDICT_CLIP, ACTUAL_CLIP)
-scorecard(
-    "Mario prediction",
-    [
-        ("your guess", PREDICT_CLIP),
-        ("farthest clip", ACTUAL_CLIP),
-        ("untrained", "dies at the first Goomba (x≈296)"),
-        ("mid", "starts jumping, still dies early"),
-        ("pretrained", "clears the first pit, reaches the first pipe (x≈594)"),
-    ],
-)
-print("clips next — real emulator play from checksummed public CNN checkpoints.")
-'''
-    )
-    mario_video("mario-untrained.mp4", "Untrained — random weights, dies at the first Goomba (x≈296).")
-    mario_video("mario-mid.mp4", "Mid checkpoint — starts jumping, still dies early.")
-    mario_video(
-        "mario-pretrained.mp4",
-        "Pretrained — clears the first pit and reaches the first pipe (x≈594).",
-    )
-
     md(
         """\
-**Watch learning happen.** The clips are recorded evidence. The next cell does real DQN updates for a workshop-length budget. Default is a public warm-start so improvement is visible. From-scratch is allowed and will look weak.
+**Watch learning happen.** The next cell does real DQN updates for a workshop-length budget. Default is a public warm-start so improvement is visible. From-scratch is allowed and will look weak.
 
 Loss is “prediction versus target,” not how far Mario ran.
 """
@@ -2609,6 +2644,12 @@ print(
 Nothing else changed — everything speaks the `Game` ABC.
 """
     )
+    checkpoint(
+        "plugin game",
+        "`guess-number` registered + one EpisodeRunner rollout",
+        "run the fast CPU test slice",
+        chapter=12,
+    )
 
 
 def chapter_13() -> None:
@@ -2699,6 +2740,9 @@ CHAPTERS = [
 
 
 def main() -> None:
+    global _CURRENT_CHAPTER
+    cells.clear()
+    _CURRENT_CHAPTER = None
     for build in CHAPTERS:
         build()
     nb = {

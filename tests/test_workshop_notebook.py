@@ -15,10 +15,15 @@ sys.path.insert(0, str(WORKSHOP))
 
 from lab import (  # noqa: E402
     ask,
+    bind_tracker,
     clamp_float,
     clamp_int,
+    complete_chapter,
+    connect_workshop_tracker,
     ensure_card,
+    get_tracker,
     grade,
+    load_wst_api_key,
     new_card,
     pick_action,
     record_guess,
@@ -30,6 +35,7 @@ from lab import (  # noqa: E402
     scorecard,
     show_card,
     skip_gates_enabled,
+    start_chapter,
 )
 
 
@@ -128,6 +134,153 @@ def test_card_records_and_prints(capsys):
     assert ns["CARD"] is created
 
 
+class _FakeTracker:
+    def __init__(self, me: dict | None = None, fail_status: int | None = None) -> None:
+        self.me_payload = me if me is not None else {"run": {"name": "demo"}, "progress": []}
+        self.fail_status = fail_status
+        self.calls: list[tuple[str, str]] = []
+
+    def me(self) -> dict:
+        return self.me_payload
+
+    def start(self, key: str) -> dict:
+        self.calls.append(("start", key))
+        if self.fail_status is not None:
+            raise _FakeHTTPError(self.fail_status)
+        return {"key": key, "status": "in_progress"}
+
+    def complete(self, key: str) -> dict:
+        self.calls.append(("complete", key))
+        if self.fail_status is not None:
+            raise _FakeHTTPError(self.fail_status)
+        return {"key": key, "status": "completed"}
+
+
+class _FakeHTTPError(Exception):
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"HTTP {status_code}")
+        self.response = type("R", (), {"status_code": status_code})()
+
+
+def test_tracker_bind_start_complete(capsys, monkeypatch):
+    import lab as lab_mod
+
+    monkeypatch.setattr(lab_mod, "_TRACKER", None)
+    fake = _FakeTracker()
+    bind_tracker(fake)
+    assert get_tracker() is fake
+    start_chapter(1)
+    complete_chapter(1)
+    assert fake.calls == [("start", "chapter-1"), ("complete", "chapter-1")]
+    out = capsys.readouterr().out
+    assert "chapter-1 → in_progress" in out
+    assert "chapter-1 → completed" in out
+
+
+def test_tracker_held_chapter_raises(monkeypatch):
+    import lab as lab_mod
+
+    monkeypatch.setattr(lab_mod, "_TRACKER", None)
+    bind_tracker(_FakeTracker(fail_status=403))
+    with pytest.raises(RuntimeError, match="held"):
+        start_chapter(2)
+
+
+def test_connect_workshop_tracker_requires_key(monkeypatch):
+    import lab as lab_mod
+
+    monkeypatch.setattr(lab_mod, "_TRACKER", None)
+    monkeypatch.delenv("WST_API_KEY", raising=False)
+    monkeypatch.delenv("WORKSHOP_SKIP_GATES", raising=False)
+    monkeypatch.setattr(lab_mod, "load_wst_api_key", lambda: "")
+    with pytest.raises(RuntimeError, match="Missing participant API key"):
+        connect_workshop_tracker(join_url="https://workshop.craftsmanlabs.net/join/demo")
+
+
+def test_connect_workshop_tracker_skips_without_key(monkeypatch, capsys):
+    import lab as lab_mod
+
+    monkeypatch.setattr(lab_mod, "_TRACKER", None)
+    monkeypatch.setenv("WORKSHOP_SKIP_GATES", "1")
+    monkeypatch.setattr(lab_mod, "load_wst_api_key", lambda: "")
+    assert connect_workshop_tracker(require=True) is None
+    assert "progress skipped" in capsys.readouterr().out
+    monkeypatch.delenv("WORKSHOP_SKIP_GATES", raising=False)
+
+
+def test_load_wst_api_key_from_env(monkeypatch):
+    monkeypatch.setenv("WST_API_KEY", " wsp_live_test ")
+    assert load_wst_api_key() == "wsp_live_test"
+    monkeypatch.delenv("WST_API_KEY", raising=False)
+    assert load_wst_api_key() == ""
+
+
+def test_committed_notebook_tracks_all_chapters_and_hides_admin_keys():
+    nb = json.loads((ROOT / "colab_workshop.ipynb").read_text(encoding="utf-8"))
+    joined = "\n".join("".join(c.get("source") or []) for c in nb["cells"])
+    assert "WORKSHOP_JOIN_URL" in joined
+    assert "https://workshop.craftsmanlabs.net" in joined
+    assert "connect_workshop_tracker" in joined
+    assert "WST_API_KEY" in joined
+    assert "workshop-tracker-client" not in joined
+    assert "WorkShopTracker.git" not in joined
+    assert "WST_ADMIN_KEY" not in joined
+    assert "MASTER_KEY_NOTEBOOK" not in joined
+    starts = [joined.find(f"start_chapter({n})") for n in range(14)]
+    completes = [joined.find(f"complete_chapter({n})") for n in range(14)]
+    assert all(i >= 0 for i in starts)
+    assert all(i >= 0 for i in completes)
+    assert starts == sorted(starts)
+    assert completes == sorted(completes)
+    for n in range(14):
+        assert starts[n] < completes[n]
+
+
+def test_inline_workshop_tracker_http_helpers(monkeypatch):
+    import io
+    import json
+    import urllib.error
+
+    from lab import WorkshopTracker, _HTTPStatusError
+
+    calls: list[tuple[str, str]] = []
+
+    class _Resp:
+        def __init__(self, payload: dict):
+            self._raw = json.dumps(payload).encode()
+
+        def read(self):
+            return self._raw
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(req, timeout=0):  # noqa: ARG001
+        calls.append((req.get_method(), req.full_url))
+        if req.full_url.endswith("/api/v1/me"):
+            return _Resp({"run": {"name": "demo"}, "progress": []})
+        return _Resp({"key": "chapter-1", "status": "in_progress"})
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    tracker = WorkshopTracker(base_url="https://example.test", api_key="wsp_live_x")
+    assert tracker.me()["run"]["name"] == "demo"
+    assert tracker.start("chapter-1")["status"] == "in_progress"
+    assert ("GET", "https://example.test/api/v1/me") in calls
+
+    def boom(req, timeout=0):  # noqa: ARG001
+        raise urllib.error.HTTPError(
+            req.full_url, 403, "Forbidden", hdrs=None, fp=io.BytesIO(b'{"message":"not open yet"}')
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    with pytest.raises(_HTTPStatusError) as err:
+        tracker.complete("chapter-2")
+    assert err.value.response.status_code == 403
+
+
 def test_builder_writes_valid_notebook(tmp_path):
     import importlib.util
 
@@ -181,6 +334,9 @@ def test_builder_writes_valid_notebook(tmp_path):
         assert '{display-mode: "form"}' in src.splitlines()[0]
     assert 'GAME = "boxing"' in joined
     assert "PREDICT_PARSE" in joined
+    assert 'SCHEMA_FIELD = "completion"' in joined
+    assert 'row.get("completion")' in joined
+    assert 'row.get("raw_completion")' not in joined
     assert "TRAIN_STRATEGY" in joined
     assert "PUBLISH = False" in joined
     assert "ensure_game" in joined
@@ -195,7 +351,7 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "EVAL_STEPS" in joined
     assert "MARIO_MODEL_REPO" in joined
     assert "target = reward + γ × best next Q" in joined
-    assert "mario-pretrained.mp4" in joined
+    assert "mario-pretrained.mp4" not in joined
     assert "select_episodes" in joined
     assert "docs/workshop/assets/diagrams/evolve-loop.svg" in joined
     assert "docs/workshop/assets/deck/HeroVisual.png" in joined
@@ -208,8 +364,9 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "docs/workshop/assets/diagrams/dqn-loop.svg" in joined
     assert "PREDICT_ACTION" in joined
     assert "NEXT_Q_RIGHT" in joined
+    assert "learning should {direction} the prediction" in joined
     assert "EPSILON" in joined
-    assert "PREDICT_CLIP" in joined
+    assert "PREDICT_CLIP" not in joined
     assert "export_sft_dataset" in joined
     assert "SKIP_GATES" not in joined
     assert "skip=SKIP_GATES" not in joined
@@ -221,6 +378,18 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert 'HF_TOKEN = ""' in joined
     assert "show_card(CARD)" in joined
     assert "Runtime → Run all" in joined
+    assert "WORKSHOP_JOIN_URL" in joined
+    assert "https://workshop.craftsmanlabs.net" in joined
+    assert "connect_workshop_tracker" in joined
+    assert "WST_API_KEY" in joined
+    assert "workshop-tracker-client" not in joined
+    assert "WorkShopTracker.git" not in joined
+    assert "WST_ADMIN_KEY" not in joined
+    assert "MASTER_KEY" not in joined
+    assert "MASTER_KEY_NOTEBOOK" not in joined
+    for n in range(14):
+        assert f"start_chapter({n})" in joined
+        assert f"complete_chapter({n})" in joined
 
 
 def test_committed_notebook_matches_builder_and_parses():
@@ -281,7 +450,6 @@ def test_notebook_diagram_refs_resolve():
         assert (deck / name).is_file()
     mario = WORKSHOP / "assets" / "mario"
     for name in CLIP_FILES:
-        assert name in joined
         assert (mario / name).is_file()
         assert (mario / name).stat().st_size > 1000
 
@@ -389,7 +557,7 @@ def _chapter_slice(joined: str, number: int, nxt: int) -> str:
 
 
 def test_chapter_5_6_interactions_and_sequence(tmp_path):
-    """Deck order, learner moments, dqn-loop, clips gate, and trace inspection."""
+    """Deck order, learner moments, live Mario, and trace inspection."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("build_nb", WORKSHOP / "build_nb.py")
@@ -408,20 +576,20 @@ def test_chapter_5_6_interactions_and_sequence(tmp_path):
     positions = [ch5.index(f"{name}.svg") for name in order]
     assert positions == sorted(positions)
     assert "dqn-loop.svg" in ch5
-    assert ch5.index("dqn-encoders.svg") > ch5.index("mario-pretrained.mp4")
 
-    assert "# @title Predict RIGHT vs RIGHT+A" in ch5
+    assert "# @title Which move should Mario choose?" in ch5
+    assert "higher number wins" in ch5
     assert "record_guess" in ch5
     assert "NEXT_Q_RIGHT" in ch5 and "GAMMA" in ch5 and "PREDICTED_Q" in ch5
     assert "EPSILON" in ch5 and "random.Random(SEED)" in ch5
-    assert ch5.index("Which clip travels farthest") < ch5.index("mario-untrained.mp4")
-    assert ch5.index("ask(") < ch5.index("mario-untrained.mp4")
+    assert "# @title Predict the Mario clips" not in ch5
+    assert "mario-untrained.mp4" not in ch5
     assert "# @title Play before you train" in joined
     assert joined.index("# @title Play before you train") < joined.index("## 2. Config")
     assert "INSTALL_MARIO" in joined
-    assert ch5.index("mario-pretrained.mp4") < ch5.index("# @title Train Mario live")
     assert ch5.index("# @title Train Mario live") < ch5.index("# @title Evaluate the trained DQN")
     assert ch5.index("# @title Evaluate the trained DQN") < ch5.index("# @title Teacher knobs")
+    assert ch5.index("dqn-encoders.svg") > ch5.index("# @title Evaluate the trained DQN")
     assert "EVAL_STEPS = 10000" in ch5
     assert "TRAINING_MODE" in ch5
     assert "local-trained" in ch5

@@ -311,3 +311,233 @@ def show_card(card: dict[str, Any]) -> None:
             f"guess={row.get('guess')!r}  actual={row.get('actual')!r}"
         )
     print(f"  {hits}/{len(scored)} correct" if scored else "  no scored guesses yet")
+
+
+# ---------------------------------------------------------------------------
+# WorkShopTracker progress (participant API key — never an admin/master key)
+# ---------------------------------------------------------------------------
+
+WST_DEFAULT_BASE_URL = "https://workshop.craftsmanlabs.net"
+_TRACKER: Any | None = None
+
+
+class _HTTPStatusError(Exception):
+    """Minimal stand-in so ``_http_status`` can read ``response.status_code``."""
+
+    def __init__(self, status_code: int, detail: str = "") -> None:
+        self.response = type("R", (), {"status_code": int(status_code)})()
+        super().__init__(detail or f"HTTP {status_code}")
+
+
+class WorkshopTracker:
+    """Tiny participant client (stdlib only — no private-repo pip install)."""
+
+    def __init__(self, *, base_url: str, api_key: str, timeout: float = 10.0) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.timeout = timeout
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+        import json
+        import urllib.error
+        import urllib.request
+
+        data = None if payload is None else json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}{path}",
+            data=data,
+            headers=self._headers(),
+            method=method,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                body = resp.read()
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                raw = exc.read().decode("utf-8", errors="replace")
+                parsed = json.loads(raw) if raw else {}
+                if isinstance(parsed, dict):
+                    detail = str(
+                        parsed.get("message")
+                        or parsed.get("detail")
+                        or parsed.get("error")
+                        or raw
+                    )
+                else:
+                    detail = raw
+            except Exception:
+                detail = str(exc)
+            raise _HTTPStatusError(exc.code, detail) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Network error contacting WorkShopTracker: {exc}") from exc
+
+        if not body:
+            return None
+        return json.loads(body.decode("utf-8"))
+
+    def me(self) -> dict[str, Any]:
+        return self._request("GET", "/api/v1/me")
+
+    def start(self, key: str) -> dict[str, Any]:
+        return self._request(
+            "PUT", f"/api/v1/me/checkpoints/{key}", {"status": "in_progress"}
+        )
+
+    def complete(self, key: str) -> dict[str, Any]:
+        return self._request(
+            "PUT", f"/api/v1/me/checkpoints/{key}", {"status": "completed"}
+        )
+
+
+def bind_tracker(tracker: Any) -> Any:
+    """Remember the live ``WorkshopTracker`` client for later chapter cells."""
+    global _TRACKER
+    _TRACKER = tracker
+    return tracker
+
+
+def get_tracker() -> Any | None:
+    return _TRACKER
+
+
+def load_wst_api_key() -> str:
+    """Load the participant key from a Colab Secret or ``WST_API_KEY`` env.
+
+    Never prints the secret. Returns ``""`` when unset.
+    """
+    try:
+        from google.colab import userdata  # type: ignore
+
+        secret = (userdata.get("WST_API_KEY") or "").strip()
+        if secret:
+            return secret
+    except Exception:
+        pass
+    return (os.environ.get("WST_API_KEY") or "").strip()
+
+
+def _http_status(exc: BaseException) -> int | None:
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    return int(status) if status is not None else None
+
+
+def _progress_error(key: str, status: str, exc: BaseException) -> RuntimeError:
+    code = _http_status(exc)
+    detail = str(exc).strip() or exc.__class__.__name__
+    lowered = detail.lower()
+    if code == 401 or "api key" in lowered or "invalid or revoked" in lowered:
+        return RuntimeError(
+            "WorkshopTracker rejected the API key. Generate a participant key on "
+            f"{WST_DEFAULT_BASE_URL}/workshop (shown once) and store it as Colab "
+            "Secret WST_API_KEY — never paste an admin/master key into the notebook."
+        )
+    if code == 404:
+        return RuntimeError(
+            f"Checkpoint {key!r} is not on this workshop run. "
+            "Ask the facilitator to sync project checkpoints (chapter-0 … chapter-13) "
+            "and create a fresh run."
+        )
+    if code == 403 or "not open yet" in lowered:
+        return RuntimeError(
+            f"Checkpoint {key!r} is held. Wait for the facilitator to open this "
+            "chapter on the run dashboard, then re-run this cell."
+        )
+    return RuntimeError(f"Could not mark {key} as {status}: {detail}")
+
+
+def start_chapter(number: int) -> None:
+    """Report ``in_progress`` for ``chapter-N``. No-op when no tracker is bound."""
+    key = f"chapter-{int(number)}"
+    tracker = _TRACKER
+    if tracker is None:
+        if skip_gates_enabled():
+            return
+        print(f"progress skipped (no tracker): would start {key}")
+        return
+    try:
+        tracker.start(key)
+    except Exception as exc:  # noqa: BLE001 — surface as workshop-facing error
+        raise _progress_error(key, "in_progress", exc) from exc
+    print(f"progress: {key} → in_progress")
+
+
+def complete_chapter(number: int) -> None:
+    """Report ``completed`` for ``chapter-N``. No-op when no tracker is bound."""
+    key = f"chapter-{int(number)}"
+    tracker = _TRACKER
+    if tracker is None:
+        if skip_gates_enabled():
+            return
+        print(f"progress skipped (no tracker): would complete {key}")
+        return
+    try:
+        tracker.complete(key)
+    except Exception as exc:  # noqa: BLE001 — surface as workshop-facing error
+        raise _progress_error(key, "completed", exc) from exc
+    print(f"progress: {key} → completed")
+
+
+def connect_workshop_tracker(
+    *,
+    join_url: str = "",
+    base_url: str = WST_DEFAULT_BASE_URL,
+    api_key: str | None = None,
+    require: bool = True,
+) -> Any | None:
+    """Bind a participant ``WorkshopTracker`` (stdlib HTTP — no pip install).
+
+    Returns the client, or ``None`` when ``require`` is false and no key is set
+    (CI / offline). Raises with join instructions when ``require`` and the key
+    is missing or invalid. Never prints the API key.
+    """
+    key = (api_key if api_key is not None else load_wst_api_key()).strip()
+    join = (join_url or "").strip() or f"{base_url.rstrip('/')}/join/<run-slug>"
+    if not key:
+        if not require or skip_gates_enabled():
+            print("progress skipped: no WST_API_KEY (offline / instructor skip).")
+            return None
+        raise RuntimeError(
+            "Missing participant API key.\n"
+            f"1. Open {join}\n"
+            "2. Sign in, join the run, click Generate key on /workshop\n"
+            "3. Save the secret (shown once) as Colab Secret WST_API_KEY\n"
+            "   (or export WST_API_KEY in the runtime env).\n"
+            "Do not use an admin/master key in this notebook."
+        )
+
+    tracker = WorkshopTracker(base_url=base_url.rstrip("/"), api_key=key)
+    try:
+        me = tracker.me()
+    except Exception as exc:  # noqa: BLE001
+        code = _http_status(exc)
+        if code in {401, 403}:
+            raise RuntimeError(
+                "WST_API_KEY was rejected. Generate a *participant* key after joining "
+                f"the run at {join}, store it as Colab Secret WST_API_KEY, and re-run."
+            ) from exc
+        raise RuntimeError(
+            f"Could not reach WorkShopTracker at {base_url.rstrip('/')}: {exc}"
+        ) from exc
+
+    run = me.get("run") if isinstance(me, dict) else None
+    if not run:
+        raise RuntimeError(
+            "This API key is not enrolled in a workshop run. "
+            f"Open {join}, join the run, then Generate key on /workshop."
+        )
+    bind_tracker(tracker)
+    run_name = run.get("name") if isinstance(run, dict) else run
+    progress = me.get("progress") if isinstance(me, dict) else None
+    n = len(progress) if isinstance(progress, list) else "?"
+    print(f"tracker connected — run={run_name!r}, checkpoints={n}")
+    print("Completion is reported telemetry for the facilitator dashboard, not a grade.")
+    return tracker
