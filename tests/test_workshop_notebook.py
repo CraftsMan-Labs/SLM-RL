@@ -213,15 +213,30 @@ def test_load_wst_api_key_from_env(monkeypatch):
     assert load_wst_api_key() == "wsp_live_test"
     monkeypatch.delenv("WST_API_KEY", raising=False)
     assert load_wst_api_key() == ""
+    assert load_wst_api_key("  wsp_from_form  ") == "wsp_from_form"
+
+
+def test_ask_wst_api_key_prefers_seed_and_prompts(monkeypatch):
+    from lab import ask_wst_api_key
+
+    assert ask_wst_api_key(default="wsp_live_seeded", skip=True) == "wsp_live_seeded"
+    assert ask_wst_api_key(default="", skip=True) == ""
+    assert ask_wst_api_key(default="wsp_form", reader=lambda _p: "should-not-run") == "wsp_form"
+    assert ask_wst_api_key(default="", reader=lambda _p: "  wsp_pasted  ") == "wsp_pasted"
+    monkeypatch.setenv("WORKSHOP_SKIP_GATES", "1")
+    assert ask_wst_api_key(default="") == ""
+    monkeypatch.delenv("WORKSHOP_SKIP_GATES", raising=False)
 
 
 def test_committed_notebook_tracks_all_chapters_and_hides_admin_keys():
     nb = json.loads((ROOT / "colab_workshop.ipynb").read_text(encoding="utf-8"))
     joined = "\n".join("".join(c.get("source") or []) for c in nb["cells"])
     assert "WORKSHOP_JOIN_URL" in joined
-    assert "https://workshop.craftsmanlabs.net" in joined
+    assert "https://workshop.craftsmanlabs.net/join/slm-rl-test-run-056892" in joined
     assert "connect_workshop_tracker" in joined
     assert "WST_API_KEY" in joined
+    assert "# @title Load WorkShopTracker API key" in joined
+    assert "ask_wst_api_key" in joined
     assert "workshop-tracker-client" not in joined
     assert "WorkShopTracker.git" not in joined
     assert "WST_ADMIN_KEY" not in joined
@@ -379,9 +394,11 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "show_card(CARD)" in joined
     assert "Runtime → Run all" in joined
     assert "WORKSHOP_JOIN_URL" in joined
-    assert "https://workshop.craftsmanlabs.net" in joined
+    assert "https://workshop.craftsmanlabs.net/join/slm-rl-test-run-056892" in joined
     assert "connect_workshop_tracker" in joined
     assert "WST_API_KEY" in joined
+    assert "# @title Load WorkShopTracker API key" in joined
+    assert "ask_wst_api_key" in joined
     assert "workshop-tracker-client" not in joined
     assert "WorkShopTracker.git" not in joined
     assert "WST_ADMIN_KEY" not in joined

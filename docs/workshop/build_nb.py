@@ -505,7 +505,12 @@ print(
         """\
 ### Join the room
 
-Progress is tracked live on [WorkShopTracker](https://workshop.craftsmanlabs.net/signin). Paste the facilitator join URL below, open it, sign in, join the run, then **Generate key** on `/workshop`. Store the secret (shown once) as Colab Secret **`WST_API_KEY`**.
+Progress is tracked live on [WorkShopTracker](https://workshop.craftsmanlabs.net/signin).
+
+1. Open this run’s join link:
+   **[https://workshop.craftsmanlabs.net/join/slm-rl-test-run-056892](https://workshop.craftsmanlabs.net/join/slm-rl-test-run-056892)**
+2. Sign in, join the run, then **Generate key** on `/workshop`.
+3. Run the next yellow cell and paste the secret into **`WST_API_KEY`** (or store it as Colab Secret `WST_API_KEY`). The value is **never printed**.
 
 That key is **run-scoped and yours** — never paste an admin/master key into this notebook.
 
@@ -518,17 +523,10 @@ Paste a Hugging Face token in the yellow form, or wait for the hidden prompt. Cr
     code(
         r'''# @title Join the room
 DISPLAY_NAME = "anonymous"  # @param {type:"string"}
-WORKSHOP_JOIN_URL = "https://workshop.craftsmanlabs.net/join/YOUR-RUN-SLUG"  # @param {type:"string"}
+WORKSHOP_JOIN_URL = "https://workshop.craftsmanlabs.net/join/slm-rl-test-run-056892"  # @param {type:"string"}
 HF_TOKEN = ""  # @param {type:"string"}
 
-from lab import (
-    ask,
-    ask_hf_token,
-    connect_workshop_tracker,
-    new_card,
-    show_card,
-    start_chapter,
-)
+from lab import ask, ask_hf_token, new_card, show_card
 from slm_rl.hf_auth import apply_hf_token, hf_token
 
 name = ask(
@@ -540,12 +538,7 @@ CARD = new_card(name)
 
 join_url = (WORKSHOP_JOIN_URL or "").strip()
 print(f"Join / generate key: {join_url}")
-print("After joining, open /workshop → Generate key → Colab Secret WST_API_KEY")
-
-# Progress client lives in lab.py (stdlib urllib) — no private-repo pip install.
-TRACKER = connect_workshop_tracker(join_url=join_url)
-if TRACKER is not None:
-    start_chapter(0)
+print("Next cell: paste your participant API key (shown once on /workshop).")
 
 seeded = (HF_TOKEN or "").strip() or (hf_token() or "")
 if not seeded:
@@ -569,6 +562,41 @@ print(
     f"welcome, {CARD['name']}. later cells will pause and ask you to type. "
     "that is the brake on Runtime → Run all."
 )
+'''
+    )
+
+    md(
+        """\
+### Load your WorkShopTracker API key
+
+Paste the **participant** secret from `/workshop` into the yellow field (or leave blank if Colab Secret `WST_API_KEY` is already set). Then run the cell — it connects to the live dashboard and starts Chapter 0.
+"""
+    )
+
+    code(
+        r'''# @title Load WorkShopTracker API key
+WST_API_KEY = ""  # @param {type:"string"}
+
+import os
+
+from lab import ask_wst_api_key, connect_workshop_tracker, start_chapter
+
+join_url = globals().get("WORKSHOP_JOIN_URL") or (
+    "https://workshop.craftsmanlabs.net/join/slm-rl-test-run-056892"
+)
+join_url = str(join_url).strip()
+
+# Form → Colab Secret → env → hidden prompt. Value is never printed.
+key = ask_wst_api_key(default=WST_API_KEY)
+if key:
+    os.environ["WST_API_KEY"] = key
+    WST_API_KEY = ""  # clear the form variable so re-runs don't keep echoing it in UI state
+
+TRACKER = connect_workshop_tracker(join_url=join_url, api_key=key or None)
+if TRACKER is not None:
+    start_chapter(0)
+else:
+    print("Tracker not connected — progress cells will skip until you re-run with a key.")
 '''
     )
 

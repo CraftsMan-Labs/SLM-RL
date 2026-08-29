@@ -82,12 +82,13 @@ Participant progress is reported to
 [workshop.craftsmanlabs.net](https://workshop.craftsmanlabs.net/signin) as
 telemetry — not a grade.
 
-1. Facilitator shares a **run join URL** (`https://workshop.craftsmanlabs.net/join/<slug>`).
-2. Attendee pastes that URL into the notebook’s `WORKSHOP_JOIN_URL` form field,
-   opens it, signs in, joins the run, then clicks **Generate key** on `/workshop`.
-3. Attendee stores the secret (shown once, `wsp_live_…`) as Colab Secret
-   **`WST_API_KEY`** (or exports `WST_API_KEY` in the runtime env).
-4. The Join-the-room cell connects via a small stdlib client in `lab.py`
+1. Facilitator shares a **run join URL** (this cohort:
+   `https://workshop.craftsmanlabs.net/join/slm-rl-test-run-056892`).
+2. Attendee opens that URL, signs in, joins the run, then clicks **Generate key** on `/workshop`.
+3. Attendee runs the **Load WorkShopTracker API key** cell and pastes the secret
+   (`wsp_live_…`) into the `WST_API_KEY` form field (or stores it as Colab Secret
+   `WST_API_KEY` / env). The value is never printed.
+4. That cell connects via a small stdlib client in `lab.py`
    (no private-repo pip install), validates the key with `tracker.me()`, and
    later cells call `start_chapter` / `complete_chapter` for `chapter-0` …
    `chapter-13`.

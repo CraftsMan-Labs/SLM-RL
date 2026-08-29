@@ -408,11 +408,15 @@ def get_tracker() -> Any | None:
     return _TRACKER
 
 
-def load_wst_api_key() -> str:
-    """Load the participant key from a Colab Secret or ``WST_API_KEY`` env.
+def load_wst_api_key(form_value: str = "") -> str:
+    """Load the participant key from form, Colab Secret, or ``WST_API_KEY`` env.
 
-    Never prints the secret. Returns ``""`` when unset.
+    Never prints the secret. Returns ``""`` when unset. Preference order:
+    non-blank ``form_value`` → Colab Secret ``WST_API_KEY`` → env.
     """
+    seeded = (form_value or "").strip()
+    if seeded:
+        return seeded
     try:
         from google.colab import userdata  # type: ignore
 
@@ -422,6 +426,40 @@ def load_wst_api_key() -> str:
     except Exception:
         pass
     return (os.environ.get("WST_API_KEY") or "").strip()
+
+
+def ask_wst_api_key(
+    *,
+    default: str = "",
+    skip: bool | None = None,
+    reader: Callable[[str], str] | None = None,
+) -> str:
+    """Prompt for a participant WorkShopTracker API key. Never print the value.
+
+    A filled ``default`` (form / Colab Secret / env) is returned without prompting.
+    Empty is allowed only when ``skip`` / ``WORKSHOP_SKIP_GATES`` is set.
+    """
+    seeded = load_wst_api_key(default)
+    if skip_gates_enabled(skip):
+        return seeded
+    if seeded:
+        return seeded
+    if reader is None:
+        try:
+            from getpass import getpass
+
+            read: Callable[[str], str] = getpass
+        except Exception:
+            read = input
+    else:
+        read = reader
+    return (
+        read(
+            "WorkShopTracker participant API key (wsp_live_… from /workshop; "
+            "Enter only if you already set Colab Secret WST_API_KEY): "
+        )
+        or ""
+    ).strip()
 
 
 def _http_status(exc: BaseException) -> int | None:
