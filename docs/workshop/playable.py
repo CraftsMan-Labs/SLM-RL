@@ -18,6 +18,7 @@ class PlayableEnv:
     """Common reset/step/render surface for workshop human play."""
 
     game_id: str = ""
+    action_ids: tuple[str, ...] = ()
     action_labels: tuple[str, ...] = ()
 
     def reset(self, seed: int | None = None) -> dict[str, Any]:
@@ -59,6 +60,7 @@ class MarioPlayable(PlayableEnv):
         from mario_lab import ACTION_NAMES
 
         self.action_labels = tuple(ACTION_NAMES)
+        self.action_ids = self.action_labels
         self._env = env
         self._obs: Any = None
         self._reward = 0.0
@@ -132,6 +134,7 @@ class AtariPlayable(PlayableEnv):
         self._done = False
         self._score = 0.0
         self._closed = False
+        self.action_ids: tuple[str, ...] = ()
         self.action_labels: tuple[str, ...] = ()
 
     def reset(self, seed: int | None = None) -> dict[str, Any]:
@@ -193,8 +196,13 @@ class AtariPlayable(PlayableEnv):
 
     def _sync_labels(self) -> None:
         if self._obs is None:
+            self.action_ids = ()
             self.action_labels = ()
             return
+        self.action_ids = tuple(
+            str(getattr(action, "id", i))
+            for i, action in enumerate(self._obs.legal_actions or [])
+        )
         self.action_labels = tuple(
             str(getattr(action, "label", None) or getattr(action, "id", i))
             for i, action in enumerate(self._obs.legal_actions or [])
@@ -207,10 +215,17 @@ class AtariPlayable(PlayableEnv):
 class GamePanel:
     """Controller for clickable play. Display is optional."""
 
-    def __init__(self, env: PlayableEnv, *, max_auto_repeat: int = MAX_AUTO_REPEAT) -> None:
+    def __init__(
+        self,
+        env: PlayableEnv,
+        *,
+        max_auto_repeat: int = MAX_AUTO_REPEAT,
+    ) -> None:
         self.env = env
         self.max_auto_repeat = max(1, int(max_auto_repeat))
         self.history: list[int] = []
+        self.ui: Any = None
+        self.keyboard: Any = None
         self.env.reset()
 
     def reset(self, seed: int | None = None) -> dict[str, Any]:
@@ -219,7 +234,9 @@ class GamePanel:
 
     def press(self, action_id: int) -> dict[str, Any]:
         state = self.env.step(action_id)
-        self.history.append(_clip_action(action_id, len(self.env.action_labels)))
+        self.history.append(
+            _clip_action(action_id, len(self.env.action_labels))
+        )
         return state
 
     def auto_repeat(self, action_id: int, n: int) -> dict[str, Any]:
@@ -240,7 +257,43 @@ class GamePanel:
         return self.env.metrics()
 
     def close(self) -> None:
+        if self.keyboard is not None:
+            try:
+                self.keyboard.close()
+            except Exception:
+                pass
         self.env.close()
+
+
+def action_for_key(key: str, action_ids: tuple[str, ...]) -> int | None:
+    """Map browser Arrow/WASD/Space keys to the best available game action."""
+    normalized = tuple(
+        str(action).upper().replace(" ", "") for action in action_ids
+    )
+    key_name = str(key or "").lower()
+    targets = {
+        "arrowleft": ("LEFT",),
+        "a": ("LEFT",),
+        "arrowright": ("RIGHT",),
+        "d": ("RIGHT",),
+        "arrowup": ("UP", "RIGHT+A", "FIRE"),
+        "w": ("UP", "RIGHT+A", "FIRE"),
+        "arrowdown": ("DOWN",),
+        "s": ("DOWN",),
+        " ": ("FIRE", "RIGHT+A"),
+        "space": ("FIRE", "RIGHT+A"),
+        "x": ("FIRE", "RIGHT+A"),
+    }.get(key_name)
+    if not targets:
+        return None
+    for target in targets:
+        if target in normalized:
+            return normalized.index(target)
+    for target in targets:
+        for i, action in enumerate(normalized):
+            if target in action:
+                return i
+    return None
 
 
 def make_playable(
@@ -281,34 +334,71 @@ def show_game_panel(
     *,
     display_fn: Callable[..., Any] | None = None,
 ) -> GamePanel:
-    """Render clickable controls. Falls back to printed metrics if widgets fail."""
+    """Render a compact game viewport with buttons and keyboard controls."""
     try:
         import io
 
         import ipywidgets as widgets
         import numpy as np
-        from IPython.display import Image, display
+        from IPython.display import display
         from PIL import Image as PILImage
     except Exception as exc:  # noqa: BLE001
-        print(f"clickable controls unavailable ({exc}); use panel.press(action_id)")
+        print(
+            f"clickable controls unavailable ({exc}); "
+            "use panel.press(action_id)"
+        )
         print(panel.metrics())
         return panel
 
     shown = display_fn or display
-    frame = widgets.Image(format="png")
-    status = widgets.HTML()
+    frame = widgets.Image(
+        format="png",
+        layout=widgets.Layout(
+            width="480px",
+            max_width="100%",
+            height="360px",
+            object_fit="contain",
+            border="2px solid #3a342d",
+        ),
+    )
+    title = widgets.HTML(
+        value=(
+            f"<div style='font:700 15px system-ui;color:#f2e7d5'>"
+            f"{panel.env.game_id.replace('-', ' ').title()}</div>"
+            "<div style='font:12px system-ui;color:#a98d6b'>"
+            "Arrow keys / WASD to move · Space or X = action</div>"
+        )
+    )
+    focus_btn = widgets.Button(
+        description="🎮 Click here to enable keyboard controls",
+        button_style="success",
+        tooltip="Keep this button focused while using Arrow keys or WASD",
+        layout=widgets.Layout(width="360px", max_width="100%"),
+    )
+    status = widgets.HTML(
+        layout=widgets.Layout(
+            width="480px",
+            max_width="100%",
+            padding="8px 10px",
+            border="1px solid #3a342d",
+        )
+    )
     auto_n = widgets.IntSlider(
         value=min(4, panel.max_auto_repeat),
         min=1,
         max=panel.max_auto_repeat,
-        description="repeat",
+        description="frames",
+        continuous_update=False,
+        layout=widgets.Layout(width="250px"),
     )
 
     def refresh() -> None:
         metrics = panel.metrics()
         status.value = (
-            f"<b>{metrics.get('status')}</b> · reward {float(metrics.get('reward') or 0):.2f} · "
-            f"score/distance {metrics.get('score', metrics.get('distance', 0))} · "
+            f"<b>{metrics.get('status')}</b> · "
+            f"reward {float(metrics.get('reward') or 0):.2f} · "
+            f"score/distance "
+            f"{metrics.get('score', metrics.get('distance', 0))} · "
             f"steps {metrics.get('steps', 0)}"
         )
         rgb = panel.env.render_rgb()
@@ -317,8 +407,19 @@ def show_game_panel(
         arr = np.asarray(rgb)
         if arr.ndim != 3:
             return
+        source = PILImage.fromarray(arr.astype("uint8"))
+        source.thumbnail((480, 360), PILImage.Resampling.NEAREST)
+        canvas = PILImage.new("RGB", (480, 360), (10, 9, 8))
+        offset = (
+            (canvas.width - source.width) // 2,
+            (canvas.height - source.height) // 2,
+        )
+        canvas.paste(
+            source,
+            offset,
+        )
         buf = io.BytesIO()
-        PILImage.fromarray(arr.astype("uint8")).save(buf, format="PNG")
+        canvas.save(buf, format="PNG")
         frame.value = buf.getvalue()
 
     def on_action(idx: int) -> Callable[[Any], None]:
@@ -329,13 +430,36 @@ def show_game_panel(
         return _clicked
 
     buttons = []
-    for i, label in enumerate(panel.env.action_labels):
-        btn = widgets.Button(description=str(label))
+    for i, (action_id, label) in enumerate(
+        zip(panel.env.action_ids, panel.env.action_labels)
+    ):
+        btn = widgets.Button(
+            description=str(label),
+            tooltip=str(action_id),
+            button_style=(
+                "info"
+                if "FIRE" not in action_id and "+A" not in action_id
+                else "warning"
+            ),
+            layout=widgets.Layout(
+                width="145px",
+                height="38px",
+                margin="3px",
+            ),
+        )
         btn.on_click(on_action(i))
         buttons.append(btn)
-    reset_btn = widgets.Button(description="Reset")
+    reset_btn = widgets.Button(
+        description="↻ Reset",
+        button_style="danger",
+        layout=widgets.Layout(width="110px"),
+    )
     reset_btn.on_click(lambda _btn: (panel.reset(), refresh()))
-    auto_btn = widgets.Button(description="Auto-repeat")
+    auto_btn = widgets.Button(
+        description="▶ Repeat last",
+        button_style="success",
+        layout=widgets.Layout(width="130px"),
+    )
 
     def _auto(_btn: Any) -> None:
         if not panel.env.action_labels:
@@ -345,6 +469,62 @@ def show_game_panel(
         refresh()
 
     auto_btn.on_click(_auto)
-    shown(widgets.VBox([frame, status, widgets.HBox(buttons), widgets.HBox([reset_btn, auto_btn, auto_n])]))
+    controls = widgets.Box(
+        buttons,
+        layout=widgets.Layout(
+            width="480px",
+            max_width="100%",
+            display="flex",
+            flex_flow="row wrap",
+            justify_content="center",
+        ),
+    )
+    utility = widgets.HBox(
+        [reset_btn, auto_btn, auto_n],
+        layout=widgets.Layout(
+            width="480px",
+            max_width="100%",
+            flex_flow="row wrap",
+        ),
+    )
+    game = widgets.VBox(
+        [title, focus_btn, frame, status, controls, utility],
+        layout=widgets.Layout(
+            width="510px",
+            max_width="100%",
+            padding="14px",
+            border="1px solid #60584e",
+        ),
+    )
+    panel.ui = game
+
+    try:
+        from ipyevents import Event
+
+        keyboard = Event(
+            source=focus_btn,
+            watched_events=["keydown"],
+            prevent_default_action=True,
+        )
+
+        def _keydown(event: dict[str, Any]) -> None:
+            idx = action_for_key(
+                str(event.get("key") or ""),
+                panel.env.action_ids,
+            )
+            if idx is None or panel.env.metrics().get("done"):
+                return
+            panel.press(idx)
+            refresh()
+
+        keyboard.on_dom_event(_keydown)
+        panel.keyboard = keyboard
+    except Exception:
+        title.value += (
+            "<div style='font:12px system-ui;color:#d89b55'>"
+            "Keyboard capture unavailable; use the controls below.</div>"
+        )
+
+    shown(game)
     refresh()
     return panel

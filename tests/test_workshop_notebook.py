@@ -163,6 +163,22 @@ def test_builder_writes_valid_notebook(tmp_path):
         assert heading in joined
     form_titles = [s for s in sources if s.startswith("# @title")]
     assert len(form_titles) >= 10
+    form_cells = [
+        c
+        for c in nb["cells"]
+        if c["cell_type"] == "code"
+        and "".join(c.get("source") or []).startswith("# @title")
+    ]
+    assert form_cells
+    code_cells = [c for c in nb["cells"] if c["cell_type"] == "code"]
+    assert code_cells
+    assert all(
+        cell.get("metadata", {}).get("cellView") == "form"
+        for cell in code_cells
+    )
+    for cell in form_cells:
+        src = "".join(cell.get("source") or [])
+        assert '{display-mode: "form"}' in src.splitlines()[0]
     assert 'GAME = "boxing"' in joined
     assert "PREDICT_PARSE" in joined
     assert "TRAIN_STRATEGY" in joined
@@ -198,6 +214,8 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "SKIP_GATES" not in joined
     assert "skip=SKIP_GATES" not in joined
     assert "# @title Join the room" in joined
+    assert "# @title Play one move" not in joined
+    assert "YOUR_ACTION" not in joined
     assert "ask(" in joined
     assert "ask_hf_token" in joined
     assert 'HF_TOKEN = ""' in joined

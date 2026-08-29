@@ -8,6 +8,57 @@
 
 This document is the contract for the Vue app in `web/`. It replaces the inline HTML in `slm_rl/playground/page.py` — do not reuse that layout, CSS, or form dump. Keep the **stdlib Python HTTP API** as the backend.
 
+### Visual system — Framer
+
+> Void black, Framer Blue, motion-first, product-as-hero.
+
+| Role | Relative path | Absolute path |
+|------|---------------|---------------|
+| Package root | `../open-design/design-systems/framer/` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-systems/framer/` |
+| Visual intent | `../open-design/design-systems/framer/DESIGN.md` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-systems/framer/DESIGN.md` |
+| Usage contract | `../open-design/design-systems/framer/USAGE.md` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-systems/framer/USAGE.md` |
+| CSS tokens | `../open-design/design-systems/framer/tokens.css` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-systems/framer/tokens.css` |
+| Components | `../open-design/design-systems/framer/components.html` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-systems/framer/components.html` |
+| Component inventory | `../open-design/design-systems/framer/components.manifest.json` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-systems/framer/components.manifest.json` |
+| Previews | `../open-design/design-systems/framer/preview/` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-systems/framer/preview/` |
+
+**Agent read order:**
+
+1. Framer `USAGE.md`
+2. Framer `DESIGN.md`
+3. Paste or import `tokens.css` before custom CSS
+4. Prefer recipes from `components.manifest.json` / `components.html`
+5. Use `preview/` for visual sanity checks
+
+### Component recipes — open-design templates
+
+> Dashboard shell, live-dashboard primitives, web-prototype sections.
+
+| Role | Relative path | Absolute path |
+|------|---------------|---------------|
+| Templates root | `../open-design/design-templates/` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-templates/` |
+| Catalogue / agent notes | `../open-design/design-templates/AGENTS.md` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-templates/AGENTS.md` |
+| Web sections / landing shells | `../open-design/design-templates/web-prototype/` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-templates/web-prototype/` |
+| Dashboard shell | `../open-design/design-templates/dashboard/` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-templates/dashboard/` |
+| Live-dashboard primitives | `../open-design/design-templates/live-dashboard/` | `/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design/design-templates/live-dashboard/` |
+
+**How to use templates for proposals:**
+
+- Steal **section skeletons and chrome patterns**, not unrelated product chrome.
+- Prefer `web-prototype` for narrative pages: cover, opportunity, outcomes, approach, scope, proof, pricing, and next steps.
+- Prefer `dashboard` / `live-dashboard` only when a proposal needs KPI strips, scorecards, tables, or product-UI mock surfaces.
+- Restyle every borrowed layout with **Framer tokens**. Never leave template-default colours.
+- Never let a template decide the story. The client decision journey comes first.
+
+### Open Design root
+
+```text
+/Users/rishub/Desktop/projects/enterprise/craftsmanlabs/open-design
+```
+
+Whenever designing anything in this repo, treat Framer + the templates above as the default references. If a choice conflicts with Framer `DESIGN.md`, Framer wins unless this file explicitly overrides it for print, PDF, readability, or proposal conversion.
+
+
 ---
 
 ## 0. Goals & non-goals

@@ -1,4 +1,4 @@
-"""CPU-safe checks for workshop playable-game adapters and the control panel."""
+"""CPU-safe checks for playable-game adapters and the control panel."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from playable import (  # noqa: E402
     AtariPlayable,
     GamePanel,
     MarioPlayable,
+    action_for_key,
     make_playable,
     show_game_panel,
 )
@@ -31,7 +32,10 @@ class _FakeAction:
 class _FakeObs:
     def __init__(self, turn: int, score: float) -> None:
         self.text = f"turn {turn}"
-        self.legal_actions = [_FakeAction("LEFT", "left"), _FakeAction("RIGHT", "right")]
+        self.legal_actions = [
+            _FakeAction("LEFT", "left"),
+            _FakeAction("RIGHT", "right"),
+        ]
         self.turn = turn
         self.metadata = {"score": score}
 
@@ -52,7 +56,10 @@ class FakeAtariGame:
         self.terminal_after = terminal_after
         self.n = 0
         self.closed = False
-        self._env = SimpleNamespace(unwrapped=SimpleNamespace(ale=SimpleNamespace(getScreenRGB=self._rgb)))
+        ale = SimpleNamespace(getScreenRGB=self._rgb)
+        self._env = SimpleNamespace(
+            unwrapped=SimpleNamespace(ale=ale)
+        )
 
     def _rgb(self):
         return np.zeros((8, 10, 3), dtype=np.uint8)
@@ -92,6 +99,7 @@ def test_atari_adapter_reset_step_terminal_and_close():
     env = AtariPlayable(game, game_id="boxing")
     state = env.reset(seed=1)
     assert state["done"] is False
+    assert env.action_ids == ("LEFT", "RIGHT")
     assert env.action_labels == ("left", "right")
     assert env.render_rgb().shape == (8, 10, 3)
     env.step(1)
@@ -141,14 +149,33 @@ def test_auto_repeat_stops_at_terminal():
     panel.close()
 
 
-def test_make_playable_rejects_unknown_and_keeps_atari_when_mario_fails(monkeypatch):
+def test_keyboard_keys_map_to_semantic_actions():
+    boxing = ("NOOP", "FIRE", "UP", "RIGHT", "LEFT", "DOWN", "RIGHTFIRE")
+    assert action_for_key("ArrowLeft", boxing) == 4
+    assert action_for_key("d", boxing) == 3
+    assert action_for_key("ArrowUp", boxing) == 2
+    assert action_for_key("s", boxing) == 5
+    assert action_for_key(" ", boxing) == 1
+    assert action_for_key("Escape", boxing) is None
+
+    mario = ("RIGHT", "RIGHT+A")
+    assert action_for_key("ArrowRight", mario) == 0
+    assert action_for_key("ArrowUp", mario) == 1
+    assert action_for_key("x", mario) == 1
+
+
+def test_make_playable_keeps_atari_when_mario_fails(monkeypatch):
     env, err = make_playable("pong")
     assert env is None
     assert "unknown game" in err
 
     import mario_lab
 
-    monkeypatch.setattr(mario_lab, "ensure_mario_packages", lambda install=False: (False, "import failed: test"))
+    monkeypatch.setattr(
+        mario_lab,
+        "ensure_mario_packages",
+        lambda install=False: (False, "import failed: test"),
+    )
     env, err = make_playable("mario", install_mario=False)
     assert env is None
     assert "import failed" in err

@@ -35,7 +35,7 @@ A random / untrained baseline is generated locally. It is not stored here.
 
 ## How the notebook uses this repo
 
-The Colab cell `MARIO_MODEL_REPO` defaults to `CraftsMan-Labs/mario-dqn-workshop` and pins `MARIO_MODEL_REVISION`. Downloads are anonymous. A checksum mismatch or network failure falls back to the committed workshop clips.
+The Colab cell `MARIO_MODEL_REPO` defaults to `BLANK/mario-dqn-workshop` and pins `MARIO_MODEL_REVISION`. Downloads are anonymous. A checksum mismatch or network failure falls back to the committed workshop clips.
 
 Live training writes `local-trained.chkpt` on the Colab disk. Participant uploads stay off unless the participant supplies their own token.
 

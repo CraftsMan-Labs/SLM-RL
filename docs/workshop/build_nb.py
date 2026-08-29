@@ -45,13 +45,20 @@ def md(source: str) -> None:
 
 
 def code(source: str) -> None:
+    text = source.replace("\r\n", "\n").strip("\n") + "\n"
+    lines = text.splitlines(keepends=True)
+    # Keep the workshop focused on controls and outputs. Colab still exposes
+    # every source block through "Show code" when an attendee wants details.
+    metadata: dict = {"cellView": "form"}
+    if lines and lines[0].startswith("# @title") and "{display-mode:" not in lines[0]:
+        lines[0] = lines[0].rstrip("\n") + ' {display-mode: "form"}\n'
     cells.append(
         {
             "cell_type": "code",
             "execution_count": None,
-            "metadata": {},
+            "metadata": metadata,
             "outputs": [],
-            "source": _lines(source),
+            "source": lines,
         }
     )
 
@@ -153,7 +160,7 @@ A small language model plays text-Atari, trains on its own games, and keeps the 
 
 **Runtime → Change runtime type → T4 GPU**, then run cells in order. A few cells ask you to **type** — that is on purpose. `Runtime → Run all` pauses there so the room stays together.
 
-Each chapter: **Choose → Predict → Run → Observe**. Yellow form cells (`# @param`) are knobs. Typed questions are required brakes: blank answers do not continue. Challenge cells are extra — skip those and the rest still runs.
+Each chapter: **Choose → Predict → Run → Observe**. Code starts collapsed so the controls and results stay readable; click **Show code** whenever you want the implementation. Yellow form cells (`# @param`) keep their knobs visible. Typed questions are required brakes: blank answers do not continue. Challenge cells are extra — skip those and the rest still runs.
 
 The deck on the other screen keeps the story. This notebook is the execution surface. Chapter headings name the matching slides.
 """
@@ -262,6 +269,8 @@ pip(
     "pillow",
     "matplotlib",
     "pandas",
+    "ipywidgets",
+    "ipyevents",
 )
 
 import peft
@@ -712,7 +721,7 @@ print("Play the game with clickable buttons next, then pick one typed menu line.
         """\
 ### Play before you train
 
-Click an action. Watch the frame, reward, and score move. This is the same game a DQN will later train on. Colab cannot capture a real-time keyboard, so the buttons step the env on purpose.
+Click inside the game once, then use **Arrow keys** or **WASD**. Press **Space/X** to punch, fire, or jump. The controls below the screen are the fallback and expose every legal action. Watch the frame, reward, and score move — this is the same game a DQN will later train on.
 
 Pick `mario` only when you want the NES emulator. That install is lazy and must not break Atari if it fails.
 """
@@ -754,96 +763,19 @@ else:
     PLAY_PANEL = GamePanel(PLAY_ENV)
     show_game_panel(PLAY_PANEL)
     print(
-        f"what just happened: clickable controls for {PLAY_GAME}. "
-        "Reset starts over. Auto-repeat is capped so a click cannot run away."
+        f"what just happened: keyboard + clickable controls for {PLAY_GAME}. "
+        "Click the game, use Arrow keys/WASD, and press Space/X for the action. "
+        "Reset starts over; repeat is capped so a click cannot run away."
     )
-'''
-    )
-
-    challenge(
-        "play one move",
-        "The next cell **asks you to type**. Pick an action **id** from the menu (`FIRE`, `LEFT`, …), "
-        "a label, or a 1-based index, then guess whether one punch beats a whole random episode — "
-        "it usually will not. That is the point of the baseline.",
-    )
-
-    code(
-        r'''# @title Play one move
-YOUR_ACTION = "FIRE"          # @param {type:"string"}
-PREDICT_BEATS_RANDOM = "no"   # @param ["yes", "no", "not sure"]
-
-from slm_rl.agents.bots import RandomAgent
-from slm_rl.rollout.runner import EpisodeRunner
-from lab import ask, ensure_card, grade, pick_action, record_guess, require_names, scorecard
-
-require_names(globals(), "game", "game_cfg", "SEED", "RUN_NAME")
-CARD = ensure_card(globals())
-YOUR_ACTION = ask(
-    "Type an action id, label, or 1-based index from the menu above",
-    default=YOUR_ACTION,
-)
-PREDICT_BEATS_RANDOM = ask(
-    "Will your one move beat a whole random episode?",
-    allowed=("yes", "no", "not sure"),
-    default=PREDICT_BEATS_RANDOM,
-)
-game, game_cfg = ensure_game()
-obs = game.reset(seed=SEED)
-chosen = pick_action(obs.legal_actions, YOUR_ACTION)
-result = game.step(chosen)
-show_frame(ale_rgb(game), f"your move: {chosen.id}", "ch1-yours")
-
-scorecard(
-    "your move",
-    [
-        ("picked", f"{chosen.id}  ({chosen.label})"),
-        ("reward", f"{result.reward:.3f}"),
-        ("terminated", result.terminated),
-        ("truncated", result.truncated),
-        ("outcome", (result.info or {}).get("outcome")),
-    ],
-)
-
-unwrap_game(game)
-stream_episode(game, every=4)
-RANDOM_STATS = EpisodeRunner(
-    game, RandomAgent(seed=SEED), game_cfg,
-    run_id=RUN_NAME, generation=0, model_id="random",
-).run_episode(seed=SEED, episode_id="random-000")
-unwrap_game(game)
-
-human_reward = float(result.reward)
-random_reward = float(RANDOM_STATS.get("cum_reward") or 0.0)
-actual = "yes" if human_reward > random_reward else "no"
-scorecard(
-    "baseline",
-    [
-        ("your 1-step reward", f"{human_reward:.3f}"),
-        ("random episode reward", f"{random_reward:.3f}"),
-        ("random outcome", RANDOM_STATS.get("outcome")),
-        ("prediction", grade(PREDICT_BEATS_RANDOM, actual)),
-    ],
-)
-record_guess(CARD, "one-move vs random", PREDICT_BEATS_RANDOM, actual)
-print(
-    f"what just happened: {GAME} reset to a text observation plus a legal-action "
-    f"menu, you played {chosen.id!r}, and RandomAgent ran one episode "
-    f"(outcome={RANDOM_STATS.get('outcome')!r})."
-)
 '''
     )
 
     md(
         """\
-Random play is the baseline. If a method cannot beat uniform legal moves, it has not learned the game.
+You have now played the same environment the agents use. A random-policy baseline is generated automatically alongside the DQN teacher in Chapter 5.
 """
     )
-    optional_challenge(
-        "try another action",
-        "Change `YOUR_ACTION` and re-run only that form cell. `ensure_game()` rebuilds "
-        "a clean env so a second run does not keep the previous wrap.",
-    )
-    checkpoint("games", f"`game` / `game_cfg` for your title, plus `RANDOM_STATS`", "merge config in Chapter 2")
+    checkpoint("games", "`game` / `game_cfg` plus your playable panel", "merge config in Chapter 2")
 
 
 def chapter_2() -> None:
@@ -1298,6 +1230,7 @@ print(
     )
     code(
         r'''# @title Epsilon sample
+# @markdown **ε (epsilon)** is the chance of exploring instead of choosing the current best-known action. `0` = always exploit; `1` = always explore.
 EPSILON = 0.20               # @param {type:"slider", min:0.0, max:1.0, step:0.05}
 N_DRAWS = 20                 # @param {type:"integer"}
 
@@ -1393,7 +1326,7 @@ TRAINING_MODE = "warm-start"   # @param ["warm-start", "from-scratch"]
 TRAIN_MINUTES = 15             # @param {type:"slider", min:1, max:20, step:1}
 EVAL_INTERVAL = 400            # @param {type:"integer"}
 SAVE_TO_DRIVE = False          # @param {type:"boolean"}
-MARIO_MODEL_REPO = "CraftsMan-Labs/mario-dqn-workshop"  # @param {type:"string"}
+MARIO_MODEL_REPO = "BLANK/mario-dqn-workshop"  # @param {type:"string"}
 MARIO_MODEL_REVISION = "main"  # @param {type:"string"}
 
 from pathlib import Path
@@ -1501,7 +1434,7 @@ from lab import clamp_int, require_names, scorecard
 from mario_lab import EVAL_STEPS_RANGE, evaluate_mario, fallback_paths, load_fallback_metrics
 
 require_names(globals(), "HOME", "SEED")
-MARIO_MODEL_REPO = globals().get("MARIO_MODEL_REPO") or "CraftsMan-Labs/mario-dqn-workshop"
+MARIO_MODEL_REPO = globals().get("MARIO_MODEL_REPO") or "BLANK/mario-dqn-workshop"
 MARIO_MODEL_REVISION = globals().get("MARIO_MODEL_REVISION") or "main"
 steps = clamp_int(EVAL_STEPS, EVAL_STEPS_RANGE[0], EVAL_STEPS_RANGE[1], "EVAL_STEPS")
 MARIO_EVAL = evaluate_mario(
@@ -1580,6 +1513,7 @@ from pathlib import Path
 
 import torch
 
+from slm_rl.agents.bots import RandomAgent
 from slm_rl.teachers import make_teacher
 from slm_rl.teachers.dqn import metrics_path_for, train_dqn
 from slm_rl.teachers.dqn_checkpoint import expected_dqn_checkpoint
@@ -1624,6 +1558,14 @@ else:
 
 teacher_agent, teacher_id = make_teacher(game_cfg, seed=SEED, dqn_checkpoint=str(dqn_path))
 print(f"make_teacher → model_id={teacher_id!r}")
+
+RANDOM_STATS = globals().get("RANDOM_STATS")
+if not RANDOM_STATS:
+    unwrap_game(game)
+    RANDOM_STATS = EpisodeRunner(
+        game, RandomAgent(seed=SEED), game_cfg,
+        run_id=RUN_NAME, generation=0, model_id="random",
+    ).run_episode(seed=SEED, episode_id="random-000")
 
 unwrap_game(game)
 stream_episode(game, every=4)

@@ -72,7 +72,7 @@ in a minute or two; `FULL` is a real run), `PRECISION` (`q4` default, `fp16`,
 or `auto`), plus the game, seed, and run name. Later chapters add bounded
 knobs — temperature, gate margin, train strategy, theater seed — and short
 predict-then-reveal quizzes. A few cells call `input()` on purpose so
-`Runtime → Run all` pauses (join, one move, parse guess, trainer, gate).
+`Runtime → Run all` pauses (join, parse guess, trainer, gate).
 There is no participant-facing skip control, and blank answers do not continue.
 Challenge cells are extra; skip those and the rest still runs.
 

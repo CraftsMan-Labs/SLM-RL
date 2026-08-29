@@ -34,7 +34,7 @@ MODERN_PACKAGES = (
 
 # Public Nature-style CNN checkpoints. Prefer the workshop Hugging Face
 # repo; GitHub staged files remain the verified fallback.
-DEFAULT_MARIO_MODEL_REPO = "CraftsMan-Labs/mario-dqn-workshop"
+DEFAULT_MARIO_MODEL_REPO = "BLANK/mario-dqn-workshop"
 DEFAULT_MARIO_MODEL_REVISION = "main"
 CHECKPOINT_SOURCE = {
     "repo": DEFAULT_MARIO_MODEL_REPO,

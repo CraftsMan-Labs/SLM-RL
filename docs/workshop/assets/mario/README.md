@@ -22,7 +22,7 @@ python docs/workshop/record_mario_clips.py
 ```
 
 Checkpoints download into `checkpoints/` (gitignored). Prefer the public
-Hugging Face repo `CraftsMan-Labs/mario-dqn-workshop` (`hf-repo/` is the
+Hugging Face repo `BLANK/mario-dqn-workshop` (`hf-repo/` is the
 upload template). GitHub staged files stay the checksummed fallback.
 
 Weights are educational; Nintendo owns Super Mario Bros.
