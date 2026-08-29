@@ -334,6 +334,18 @@ def stack_frames(frames: list[Any]) -> Any:
 TWO_ACTIONS = [["right"], ["right", "A"]]
 
 
+def validate_mario_action_space(env: Any) -> None:
+    """Fail before inference if checkpoint indices would map to NOOP."""
+    action_space = getattr(env, "action_space", None)
+    n_actions = getattr(action_space, "n", None)
+    if n_actions != CHECKPOINT_N_ACTIONS:
+        raise ValueError(
+            "Mario DQN requires exactly 2 actions "
+            f"(RIGHT, RIGHT+A), but the environment exposes {n_actions!r}. "
+            "Wrap it with JoypadSpace(env, TWO_ACTIONS)."
+        )
+
+
 def try_make_mario_env():
     """Return (env, err). env is None on any failure."""
     try:
@@ -349,6 +361,7 @@ def try_make_mario_env():
 
             env = gym.make("SuperMarioBros-1-1-v0")
         env = JoypadSpace(env, TWO_ACTIONS)
+        validate_mario_action_space(env)
         return env, ""
     except Exception as exc:  # noqa: BLE001
         return None, f"env make failed: {exc}"
@@ -469,6 +482,7 @@ def play_mario_policy(
     import numpy as np
     import torch
 
+    validate_mario_action_space(env)
     obs = _reset(env)
     gray = [preprocess_frame(obs)]
     rgb_frames: list[Any] = [np.asarray(obs)] if collect_frames else []

@@ -365,6 +365,8 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert "TRAINING_MODE" in joined
     assert "EVAL_STEPS" in joined
     assert "MARIO_MODEL_REPO" in joined
+    assert '"checkout", "-B", BRANCH, "FETCH_HEAD"' in joined
+    assert 'sys.modules.pop(stale_module, None)' in joined
     assert "target = reward + γ × best next Q" in joined
     assert "mario-pretrained.mp4" not in joined
     assert "select_episodes" in joined
@@ -604,9 +606,11 @@ def test_chapter_5_6_interactions_and_sequence(tmp_path):
     assert "# @title Play before you train" in joined
     assert joined.index("# @title Play before you train") < joined.index("## 2. Config")
     assert "INSTALL_MARIO" in joined
-    assert ch5.index("# @title Train Mario live") < ch5.index("# @title Evaluate the trained DQN")
-    assert ch5.index("# @title Evaluate the trained DQN") < ch5.index("# @title Teacher knobs")
-    assert ch5.index("dqn-encoders.svg") > ch5.index("# @title Evaluate the trained DQN")
+    eval_title = "# @title Watch the pretrained DQN play Mario"
+    assert ch5.index("# @title Train Mario live") < ch5.index(eval_title)
+    assert ch5.index(eval_title) < ch5.index("# @title Teacher knobs")
+    assert ch5.index("dqn-encoders.svg") > ch5.index(eval_title)
+    assert 'EVAL_SOURCE = "public-final"' in ch5
     assert "EVAL_STEPS = 10000" in ch5
     assert "TRAINING_MODE" in ch5
     assert "local-trained" in ch5

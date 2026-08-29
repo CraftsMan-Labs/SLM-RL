@@ -42,6 +42,7 @@ from mario_lab import (  # noqa: E402
     sha256_file,
     stack_frames,
     train_mario_live,
+    validate_mario_action_space,
     verify_checkpoint,
 )
 
@@ -109,6 +110,17 @@ def test_staged_checkpoints_are_pinned():
         if row["url"]:
             assert len(row["sha256"]) == 64
             assert row["filename"]
+
+
+def test_mario_action_space_rejects_noop_mappings():
+    wrong_space = type("Space", (), {"n": 5})()
+    correct_space = type("Space", (), {"n": 2})()
+    wrong = type("Env", (), {"action_space": wrong_space})()
+    correct = type("Env", (), {"action_space": correct_space})()
+
+    with pytest.raises(ValueError, match="exactly 2 actions"):
+        validate_mario_action_space(wrong)
+    validate_mario_action_space(correct)
 
 
 def test_remap_public_mario_keys():
@@ -261,6 +273,8 @@ def test_evaluate_clamps_step_budget(tmp_path, monkeypatch):
 
 
 class _FakeMarioEnv:
+    action_space = type("Space", (), {"n": CHECKPOINT_N_ACTIONS})()
+
     def reset(self, *args, **kwargs):
         return np.zeros((24, 32, 3), dtype=np.uint8)
 
@@ -279,6 +293,7 @@ def test_chunked_train_saves_and_resumes_if_torch(tmp_path, monkeypatch):
     monkeypatch.setattr(mario_lab, "MIN_REPLAY", 8)
     monkeypatch.setattr(mario_lab, "BATCH_SIZE", 8)
     monkeypatch.setattr(mario_lab, "TARGET_SYNC_EVERY", 4)
+    monkeypatch.setattr(mario_lab, "EVAL_INTERVAL_RANGE", (1, 2_000))
     rows: list[dict] = []
     first = train_mario_live(
         tmp_path,

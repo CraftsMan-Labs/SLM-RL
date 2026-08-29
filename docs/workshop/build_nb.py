@@ -263,9 +263,31 @@ if not (ROOT / "pyproject.toml").is_file():
         f"Check REPO_URL (expected CraftsMan-Labs/SLM-RL) and re-run."
     )
 
+# Colab keeps /content across notebook re-runs. Refresh a clean checkout so an
+# old Mario action map cannot silently turn checkpoint action 0 into NOOP.
+if str(ROOT).startswith("/content/") and (ROOT / ".git").is_dir():
+    dirty = subprocess.check_output(
+        ["git", "-C", str(ROOT), "status", "--porcelain"],
+        text=True,
+    ).strip()
+    if dirty:
+        raise RuntimeError(
+            f"{ROOT} has local changes, so it was not auto-updated. "
+            "Restart the runtime for a clean workshop checkout."
+        )
+    print(f"syncing {ROOT} to origin/{BRANCH}")
+    subprocess.check_call(
+        ["git", "-C", str(ROOT), "fetch", "--depth", "1", "origin", BRANCH],
+    )
+    subprocess.check_call(
+        ["git", "-C", str(ROOT), "checkout", "-B", BRANCH, "FETCH_HEAD"],
+    )
+
 os.chdir(ROOT)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+for stale_module in ("mario_lab", "playable"):
+    sys.modules.pop(stale_module, None)
 
 
 def pip(*args: str) -> None:
@@ -1481,13 +1503,13 @@ print(
 
     md(
         """\
-**Let the trained DQN play.** `EVAL_STEPS` defaults to 10,000 and is yours to change. Pick the locally improved checkpoint or the public final one. A short live run is not a fully trained model.
+**Watch the pretrained DQN play Mario.** By default, the next cell loads the public final checkpoint, runs it greedily in World 1-1, renders the gameplay video, and reports reward, distance, and deaths. Switch to `local-trained` only when you want to compare your workshop run. The public checkpoint is educational and may not finish the level.
 """
     )
 
     code(
-        r'''# @title Evaluate the trained DQN
-EVAL_SOURCE = "local-trained"  # @param ["local-trained", "public-final"]
+        r'''# @title Watch the pretrained DQN play Mario
+EVAL_SOURCE = "public-final"  # @param ["public-final", "local-trained"]
 EVAL_STEPS = 10000             # @param {type:"integer"}
 
 from pathlib import Path
