@@ -354,6 +354,11 @@ def test_builder_writes_valid_notebook(tmp_path):
     assert 'row.get("raw_completion")' not in joined
     assert "TRAIN_STRATEGY" in joined
     assert "PUBLISH = False" in joined
+    assert "# @title LinkedIn post (copy after publish)" in joined
+    assert "LINKEDIN_POST" in joined
+    assert "Agentics Foundation and Ideas2IT" in joined
+    assert "linkedin.com/company/agentics-org" in joined
+    assert "linkedin.com/company/ideas2it" in joined
     assert "ensure_game" in joined
     assert "close_backend_if_any" in joined
     assert "mermaid.run()" not in joined

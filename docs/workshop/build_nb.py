@@ -2568,7 +2568,47 @@ print(
 )
 '''
     )
-    checkpoint("publish", "HF repos if opted in, else a no-op", "register your own game")
+
+    md(
+        """\
+**Share the win.** After a successful publish, copy the LinkedIn post below. On LinkedIn, turn **Agentics Foundation** and **Ideas2IT** into `@` company mentions (company pages: [agentics-org](https://www.linkedin.com/company/agentics-org), [ideas2it](https://www.linkedin.com/company/ideas2it)).
+"""
+    )
+
+    code(
+        r'''# @title LinkedIn post (copy after publish)
+result = globals().get("PUBLISH_RESULT")
+model_url = "https://huggingface.co/{username}/slm-rl-{run_id}"
+dataset_url = "https://huggingface.co/datasets/{username}/slm-rl-{run_id}"
+if result is not None:
+    if getattr(result, "model_repo", None):
+        model_url = f"https://huggingface.co/{result.model_repo}"
+    if getattr(result, "dataset_repo", None):
+        dataset_url = f"https://huggingface.co/datasets/{result.dataset_repo}"
+
+LINKEDIN_POST = f"""Just published my first SLM-RL run to Hugging Face.
+
+Trained a small language model with reinforcement learning on Atari — rollout → train → eval → gate — then pushed the adapter and dataset to the Hub.
+
+Proud to have been part of training and publishing with the first SLM-RL workshop, in association with Agentics Foundation and Ideas2IT.
+
+Model: {model_url}
+Dataset: {dataset_url}
+
+#SLM #ReinforcementLearning #HuggingFace #AgenticAI"""
+
+print(LINKEDIN_POST)
+print()
+if result is None or not (getattr(result, "model_repo", None) or getattr(result, "dataset_repo", None)):
+    print(
+        "URLs still have placeholders — publish successfully in the cell above, "
+        "then re-run this cell to fill them in."
+    )
+else:
+    print("Copy everything above the blank line into LinkedIn, then @-mention the two companies.")
+'''
+    )
+    checkpoint("publish", "HF repos + LinkedIn post if opted in, else a no-op", "register your own game")
 
 
 def chapter_12() -> None:
